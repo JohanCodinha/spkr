@@ -1,40 +1,27 @@
 import { chromium } from 'playwright';
-import { mkdirSync, existsSync, readdirSync, unlinkSync } from 'fs';
+import { createServer } from 'http';
+import { mkdirSync, existsSync, readdirSync, unlinkSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const PUBLIC = join(ROOT, 'public');
 const SCREENSHOTS_DIR = join(ROOT, 'screenshots');
 
-// Start serve in the background
+// Start a simple HTTP server
 function startServer(port) {
   return new Promise((resolve) => {
-    const server = spawn('npx', ['serve', PUBLIC, '-l', port.toString(), '--no-clipboard'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      cwd: ROOT,
+    const html = readFileSync(join(PUBLIC, 'index.html'), 'utf-8');
+    const server = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
     });
 
-    let started = false;
-    const onOutput = (data) => {
-      if (!started && data.toString().includes('Accepting connections')) {
-        started = true;
-        resolve(server);
-      }
-    };
-
-    server.stdout.on('data', onOutput);
-    server.stderr.on('data', onOutput);
-
-    // Timeout fallback
-    setTimeout(() => {
-      if (!started) {
-        started = true;
-        resolve(server);
-      }
-    }, 5000);
+    server.listen(port, () => {
+      resolve(server);
+    });
   });
 }
 
@@ -376,7 +363,7 @@ async function main() {
 
   } finally {
     await browser.close();
-    server.kill();
+    server.close();
     console.log('\n✨ Done! Screenshots saved to ./screenshots/');
   }
 }

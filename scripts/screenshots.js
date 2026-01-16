@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { createServer } from 'http';
-import { mkdirSync, existsSync, readdirSync, unlinkSync, readFileSync } from 'fs';
+import { mkdirSync, existsSync, readdirSync, unlinkSync, readFileSync, writeFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
@@ -10,6 +10,14 @@ const ROOT = join(__dirname, '..');
 const PUBLIC = join(ROOT, 'public');
 const SCREENSHOTS_DIR = join(ROOT, 'screenshots');
 
+const PLAYERS = [
+  { name: 'Alice', color: '#8b5cf6', vote: '5' },
+  { name: 'Bob', color: '#3b82f6', vote: '8' },
+  { name: 'Charlie', color: '#10b981', vote: '5' },
+  { name: 'Diana', color: '#f59e0b', vote: '8' },
+  { name: 'Eve', color: '#ec4899', vote: '5' },
+];
+
 // Start a simple HTTP server
 function startServer(port) {
   return new Promise((resolve) => {
@@ -18,20 +26,52 @@ function startServer(port) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(html);
     });
-
-    server.listen(port, () => {
-      resolve(server);
-    });
+    server.listen(port, () => resolve(server));
   });
 }
 
+// Set up debug hooks
+async function setupHooks(page) {
+  await page.evaluate(() => {
+    window.__SPKR_HOOKS__ = {};
+    window.__SPKR_STATE__ = {
+      cardsSettled: false,
+      revealComplete: false,
+    };
+
+    window.__SPKR_HOOKS__.cardsSettled = () => {
+      window.__SPKR_STATE__.cardsSettled = true;
+      console.log('[HOOK] cardsSettled');
+    };
+
+    window.__SPKR_HOOKS__.revealComplete = () => {
+      window.__SPKR_STATE__.revealComplete = true;
+      console.log('[HOOK] revealComplete');
+    };
+  });
+}
+
+// Wait for thrown cards to settle (velocity ~0)
+async function waitForCardsSettled(page, timeout = 10000) {
+  return page.waitForFunction(
+    () => window.__SPKR_STATE__?.cardsSettled === true,
+    { timeout }
+  );
+}
+
+// Wait for reveal animation to complete (flipped + positioned)
+async function waitForRevealComplete(page, timeout = 10000) {
+  return page.waitForFunction(
+    () => window.__SPKR_STATE__?.revealComplete === true,
+    { timeout }
+  );
+}
+
 async function main() {
-  // Ensure screenshots directory exists
   if (!existsSync(SCREENSHOTS_DIR)) {
     mkdirSync(SCREENSHOTS_DIR, { recursive: true });
   }
 
-  // Start local server
   const PORT = 3458;
   console.log('Starting server...');
   const server = await startServer(PORT);
@@ -40,331 +80,158 @@ async function main() {
 
   const browser = await chromium.launch({ headless: true });
 
+  // High-res settings
+  const viewport = { width: 1920, height: 1080 };
+  const deviceScaleFactor = 2;
+
   try {
     // ============================================
-    // Screenshot 1: Lobby (Create/Join screen)
+    // Screenshot 1: Lobby
     // ============================================
     console.log('\n📸 Capturing lobby screenshot...');
-    const lobbyContext = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-    });
+    const lobbyContext = await browser.newContext({ viewport, deviceScaleFactor });
     const lobbyPage = await lobbyContext.newPage();
     await lobbyPage.goto(URL);
     await lobbyPage.waitForSelector('#lobby-screen', { state: 'visible' });
-    await lobbyPage.waitForTimeout(1000);
-    await lobbyPage.screenshot({
-      path: join(SCREENSHOTS_DIR, '01-lobby.png'),
-    });
+    await lobbyPage.waitForTimeout(500);
+    await lobbyPage.screenshot({ path: join(SCREENSHOTS_DIR, '01-lobby.png') });
     console.log('✅ Lobby screenshot saved');
     await lobbyContext.close();
 
     // ============================================
-    // Screenshot 2 & 3: Game UI with mocked state
-    // We'll inject fake game state via JS since P2P requires
-    // actual network connections that are hard to simulate
+    // Screenshot 2 & 3 + Video: Mock 5-player game
     // ============================================
-    console.log('\n🎮 Setting up mocked game state...');
+    console.log('\n🎮 Setting up mock 5-player game (no P2P)...');
 
     const gameContext = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-      recordVideo: {
-        dir: SCREENSHOTS_DIR,
-        size: { width: 1280, height: 800 },
-      },
+      viewport,
+      deviceScaleFactor,
+      recordVideo: { dir: SCREENSHOTS_DIR, size: { width: 1920, height: 1080 } }
     });
     const gamePage = await gameContext.newPage();
     await gamePage.goto(URL);
+    await setupHooks(gamePage);
     await gamePage.waitForSelector('#lobby-screen', { state: 'visible' });
 
-    // Enter a name and create room (this will initialize the game state)
-    await gamePage.fill('#lobby-name-input', 'Alice');
-    await gamePage.evaluate(() => {
-      document.getElementById('lobby-color-input').value = '#e74c3c';
-    });
+    // Start game in mock mode (bypasses P2P entirely)
+    console.log('🚀 Starting game in mock mode...');
+    await gamePage.evaluate((player) => {
+      window.__SPKR_MOCK__.startGame(player.name, player.color);
+    }, PLAYERS[0]);
 
-    // Manually transition to game UI and inject mock state
-    await gamePage.evaluate(() => {
-      // Hide lobby, show game
-      document.getElementById('lobby-screen').classList.add('hidden');
-      document.getElementById('game-canvas').classList.remove('hidden');
-      document.getElementById('ui-layer').classList.remove('hidden');
+    await gamePage.waitForSelector('#game-canvas:not(.hidden)');
+    console.log(`✅ Game started as ${PLAYERS[0].name}`);
 
-      // Set room code
-      document.getElementById('room-code-display').textContent = 'DEMO42';
-    });
+    // Add fake remote players (no P2P needed!)
+    console.log('\n👥 Adding mock players...');
+    for (let i = 1; i < PLAYERS.length; i++) {
+      const player = PLAYERS[i];
+      await gamePage.evaluate(({ p, idx }) => {
+        window.__SPKR_MOCK__.addPlayer(`mock-${idx}`, p.name, p.color, p.vote);
+      }, { p: player, idx: i });
+      console.log(`✅ Added ${player.name} with vote ${player.vote}`);
+      await gamePage.waitForTimeout(600); // Time between cards for animation
+    }
 
-    // Wait for game canvas to be visible
-    await gamePage.waitForSelector('#game-canvas:not(.hidden)', { state: 'visible' });
-    await gamePage.waitForTimeout(500);
+    // Host votes last
+    console.log(`\n🗳️ ${PLAYERS[0].name} voting ${PLAYERS[0].vote}...`);
+    await gamePage.evaluate((vote) => {
+      window.__SPKR_MOCK__.vote(vote);
+    }, PLAYERS[0].vote);
+    console.log(`✅ ${PLAYERS[0].name} voted`);
 
-    // Inject mock players into the avatar container
-    await gamePage.evaluate(() => {
-      const players = [
-        { name: 'Alice', color: '#e74c3c', voted: true },
-        { name: 'Bob', color: '#3498db', voted: true },
-        { name: 'Charlie', color: '#2ecc71', voted: true },
-        { name: 'Diana', color: '#9b59b6', voted: true },
-        { name: 'Eve', color: '#f39c12', voted: true },
-      ];
+    // Wait for cards to settle (physics-based, no timeout)
+    console.log('\n⏳ Waiting for cards to settle...');
+    await waitForCardsSettled(gamePage, 10000);
+    console.log('✅ Cards settled');
 
-      const container = document.getElementById('avatar-container');
-      container.innerHTML = '';
-
-      players.forEach(p => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'avatar-item';
-
-        const pill = document.createElement('div');
-        pill.className = 'avatar-pill';
-        pill.style.backgroundColor = p.color;
-        pill.style.opacity = p.voted ? '1' : '0.4';
-
-        const initials = document.createElement('div');
-        initials.className = 'avatar-initials';
-        initials.innerText = p.name[0].toUpperCase();
-
-        const nameContainer = document.createElement('div');
-        nameContainer.className = 'avatar-name-container';
-
-        const nameText = document.createElement('div');
-        nameText.className = 'avatar-name';
-        nameText.innerText = p.name;
-
-        nameContainer.appendChild(nameText);
-        pill.appendChild(initials);
-        pill.appendChild(nameContainer);
-        wrapper.appendChild(pill);
-        container.appendChild(wrapper);
-      });
-    });
-
-    // Build the card deck
-    await gamePage.evaluate(() => {
-      const deck = document.getElementById('card-deck');
-      deck.innerHTML = '';
-      const values = [1, 2, 3, 5, 8, 13, 21, '?', '☕'];
-      values.forEach(val => {
-        const btn = document.createElement('button');
-        btn.className = 'deck-card';
-        btn.innerText = val;
-        deck.appendChild(btn);
-      });
-    });
-
-    // Draw mock cards on canvas
-    await gamePage.evaluate(() => {
-      const canvas = document.getElementById('game-canvas');
-      const ctx = canvas.getContext('2d');
-      const dpr = window.devicePixelRatio || 1;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = w + 'px';
-      canvas.style.height = h + 'px';
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // Draw table background
-      ctx.fillStyle = '#e2e8f0';
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Draw some cards scattered on the table
-      const players = [
-        { name: 'Alice', color: '#e74c3c', vote: '5' },
-        { name: 'Bob', color: '#3498db', vote: '8' },
-        { name: 'Charlie', color: '#2ecc71', vote: '5' },
-        { name: 'Diana', color: '#9b59b6', vote: '8' },
-        { name: 'Eve', color: '#f39c12', vote: '5' },
-      ];
-
-      const cardW = 60;
-      const cardH = 90;
-      const centerX = w / 2;
-      const centerY = h / 2;
-      const radius = Math.min(w, h) * 0.25;
-
-      players.forEach((p, i) => {
-        const angle = (i / players.length) * Math.PI * 2 - Math.PI / 2;
-        // Scatter cards near center
-        const scatter = 80;
-        const x = centerX + (Math.random() - 0.5) * scatter;
-        const y = centerY + (Math.random() - 0.5) * scatter;
-        const rotation = (Math.random() - 0.5) * 0.5;
-
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(rotation);
-
-        // Card shadow
-        ctx.shadowColor = 'rgba(0,0,0,0.1)';
-        ctx.shadowBlur = 15;
-        ctx.shadowOffsetY = 5;
-
-        // Card back (colored)
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 8);
-        ctx.fill();
-
-        // Card border
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.restore();
-      });
-    });
-
-    await gamePage.waitForTimeout(500);
-
-    // Screenshot: Voting phase (cards face down)
+    // Screenshot: All voted
     console.log('\n📸 Capturing voting screenshot...');
-    await gamePage.screenshot({
-      path: join(SCREENSHOTS_DIR, '02-voting.png'),
-    });
+    await gamePage.screenshot({ path: join(SCREENSHOTS_DIR, '02-voting.png') });
     console.log('✅ Voting screenshot saved');
 
-    // Now draw revealed cards
-    console.log('\n🎬 Simulating reveal...');
+    // Reveal cards
+    console.log('\n🎬 Revealing cards...');
     await gamePage.evaluate(() => {
-      const canvas = document.getElementById('game-canvas');
-      const ctx = canvas.getContext('2d');
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-
-      // Clear and redraw
-      ctx.clearRect(0, 0, w, h);
-
-      // Draw table background
-      ctx.fillStyle = '#e2e8f0';
-      ctx.beginPath();
-      ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.4, 0, Math.PI * 2);
-      ctx.fill();
-
-      const players = [
-        { name: 'Alice', color: '#e74c3c', vote: '5' },
-        { name: 'Bob', color: '#3498db', vote: '8' },
-        { name: 'Charlie', color: '#2ecc71', vote: '5' },
-        { name: 'Diana', color: '#9b59b6', vote: '8' },
-        { name: 'Eve', color: '#f39c12', vote: '5' },
-      ];
-
-      const cardW = 60;
-      const cardH = 90;
-      const centerX = w / 2;
-      const centerY = h / 2;
-      const cardRadius = Math.min(w, h) * 0.22;
-
-      players.forEach((p, i) => {
-        const angle = (i / players.length) * Math.PI * 2 - Math.PI / 2;
-        const x = centerX + Math.cos(angle) * cardRadius;
-        const y = centerY + Math.sin(angle) * cardRadius;
-
-        ctx.save();
-        ctx.translate(x, y);
-
-        // Card shadow
-        ctx.shadowColor = 'rgba(0,0,0,0.1)';
-        ctx.shadowBlur = 15;
-        ctx.shadowOffsetY = 5;
-
-        // Card face (white)
-        ctx.fillStyle = 'white';
-        ctx.beginPath();
-        ctx.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 8);
-        ctx.fill();
-
-        // Card border with player color
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 3;
-        ctx.stroke();
-
-        // Card value
-        ctx.shadowColor = 'transparent';
-        ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 24px Nunito, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(p.vote, 0, 0);
-
-        // Player name
-        ctx.font = 'bold 10px Nunito, sans-serif';
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText(p.name, 0, cardH / 2 - 12);
-
-        ctx.restore();
-      });
-
-      // Draw reset button in center
-      ctx.fillStyle = 'white';
-      ctx.shadowColor = 'rgba(0,0,0,0.1)';
-      ctx.shadowBlur = 20;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 50, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Reset icon (simple circle arrow)
-      ctx.strokeStyle = '#64748b';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 20, 0.5, Math.PI * 1.7);
-      ctx.stroke();
-
-      // Arrow head
-      ctx.beginPath();
-      ctx.moveTo(centerX + 12, centerY - 18);
-      ctx.lineTo(centerX + 20, centerY - 8);
-      ctx.lineTo(centerX + 8, centerY - 8);
-      ctx.fillStyle = '#64748b';
-      ctx.fill();
-
-      // Hide deck
-      document.getElementById('card-deck').classList.add('revealed');
+      window.__SPKR_MOCK__.reveal();
     });
 
+    // Wait for reveal animation using revealComplete hook
+    try {
+      await waitForRevealComplete(gamePage, 10000);
+      console.log('✅ Cards finished flipping');
+    } catch (e) {
+      console.log('⚠️ Reveal timeout, continuing...');
+    }
+
+    // Extra time for visual polish
     await gamePage.waitForTimeout(500);
 
-    // Screenshot: Cards revealed
+    // Screenshot: Revealed
     console.log('\n📸 Capturing reveal screenshot...');
-    await gamePage.screenshot({
-      path: join(SCREENSHOTS_DIR, '03-reveal.png'),
-    });
+    await gamePage.screenshot({ path: join(SCREENSHOTS_DIR, '03-reveal.png') });
     console.log('✅ Reveal screenshot saved');
 
-    // Close context to finalize video
+    // Hold for video outro
+    await gamePage.waitForTimeout(2000);
+
     await gameContext.close();
 
     // ============================================
-    // Convert video to GIF
+    // Convert video to MP4 (GitHub-friendly)
     // ============================================
-    console.log('\n🎬 Converting video to GIF...');
-
+    console.log('\n🎬 Converting video to MP4...');
     const files = readdirSync(SCREENSHOTS_DIR);
     const videoFile = files.find(f => f.endsWith('.webm'));
 
     if (videoFile) {
       const videoPath = join(SCREENSHOTS_DIR, videoFile);
+      const mp4Path = join(SCREENSHOTS_DIR, 'game-demo.mp4');
       const gifPath = join(SCREENSHOTS_DIR, 'game-demo.gif');
 
       try {
-        execSync(`ffmpeg -y -i "${videoPath}" -vf "fps=12,scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 "${gifPath}"`, {
+        // Create MP4 (much smaller, better quality)
+        execSync(`ffmpeg -y -i "${videoPath}" -c:v libx264 -preset slow -crf 22 -pix_fmt yuv420p -movflags +faststart "${mp4Path}"`, {
+          stdio: 'pipe',
+        });
+        console.log('✅ MP4 created: game-demo.mp4');
+
+        // Create optimized GIF (600px, 15fps, 256 colors with diff palette)
+        execSync(`ffmpeg -y -i "${videoPath}" -vf "fps=15,scale=600:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=floyd_steinberg" -loop 0 "${gifPath}"`, {
           stdio: 'pipe',
         });
         console.log('✅ GIF created: game-demo.gif');
+
         unlinkSync(videoPath);
       } catch (e) {
-        console.log('⚠️ ffmpeg not available in PATH, keeping video file');
-        console.log('   Install ffmpeg to generate GIF: brew install ffmpeg');
+        console.log('⚠️ ffmpeg not available, keeping video file');
+        console.log('   Install ffmpeg for MP4/GIF conversion');
       }
     }
 
   } finally {
     await browser.close();
     server.close();
-    console.log('\n✨ Done! Screenshots saved to ./screenshots/');
+
+    // Generate minimal preview HTML
+    const sizes = ['01-lobby.png', '02-voting.png', '03-reveal.png', 'game-demo.gif', 'game-demo.mp4']
+      .map(f => {
+        try {
+          const s = statSync(join(SCREENSHOTS_DIR, f)).size;
+          return `${f}: ${(s / 1024).toFixed(0)}KB`;
+        } catch { return null; }
+      }).filter(Boolean);
+
+    const html = `<!DOCTYPE html><meta charset=utf-8><meta name=viewport content="width=device-width"><title>Preview</title>
+<style>*{margin:0;box-sizing:border-box}body{background:#111;color:#fff;font:14px system-ui;padding:1em}
+img,video{max-width:100%;border-radius:4px;margin:.5em 0}h2{margin-top:1em;font-size:1em;opacity:.6}</style>
+<h2>Screenshots</h2>${['01-lobby.png','02-voting.png','03-reveal.png'].map(f=>`<img src=screenshots/${f}>`).join('')}
+<h2>Demo</h2><video src=screenshots/game-demo.mp4 autoplay loop muted></video><img src=screenshots/game-demo.gif>
+<pre style="margin-top:1em;opacity:.5">${sizes.join('\n')}</pre>`;
+
+    writeFileSync(join(ROOT, 'preview.html'), html);
+    console.log('\n✨ Done!');
+    console.log(`   Preview: file://${join(ROOT, 'preview.html')}`);
   }
 }
 

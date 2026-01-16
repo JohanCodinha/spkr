@@ -6,6 +6,7 @@
 export let cards = [];
 export let particles = [];
 export let isRevealed = false;
+export let revealComplete = false; // All cards finished flipping
 export let ctx = null;
 export let width = 0;
 export let height = 0;
@@ -38,6 +39,10 @@ export function setParticles(newParticles) {
 
 export function setIsRevealed(revealed) {
     isRevealed = revealed;
+}
+
+export function setRevealComplete(complete) {
+    revealComplete = complete;
 }
 
 export function setCtx(context) {

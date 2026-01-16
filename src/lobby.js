@@ -5,6 +5,7 @@
 import { elements, localPlayer, players, setGameStarted } from './state.js';
 import { saveIdentityToStorage } from './utils.js';
 import * as mp from './multiplayer.js';
+import { emit } from './debug.js';
 
 // Callback for starting the game (set from game.js)
 let onStartGame = null;
@@ -76,6 +77,7 @@ export function createRoom() {
             voted: false
         });
 
+        emit('roomCreated', { code });
         if (onStartGame) onStartGame();
     } catch (error) {
         showLobbyError('Failed to create room: ' + error.message);
@@ -117,6 +119,7 @@ export function joinRoom() {
             voted: false
         });
 
+        emit('roomJoined', { code: normalizedCode });
         if (onStartGame) onStartGame();
     } catch (error) {
         showLobbyError('Failed to join room: ' + error.message);

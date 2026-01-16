@@ -12,12 +12,14 @@ async function build() {
 
   // Bundle and minify JS
   // Use ESM format to preserve the external Trystero import from esm.sh
+  // Define __DEBUG__ as false so debug hooks get tree-shaken out in prod
   const js = (await esbuild.build({
     entryPoints: [join(srcDir, 'game.js')],
     bundle: true,
     minify: true,
     format: 'esm',
     external: ['https://esm.sh/*'],
+    define: { '__DEBUG__': 'false' },
     write: false,
   })).outputFiles[0].text;
 
@@ -33,10 +35,11 @@ async function build() {
     .replace(/</g, '%3C').replace(/>/g, '%3E').replace(/\s+/g, ' ');
 
   // Build HTML
+  // Note: Use function replacer to avoid $& special pattern in replacement string
   const html = readFileSync(join(srcDir, 'index.html'), 'utf-8')
-    .replace(/<link rel="stylesheet" href="styles\.css">/, `<style>${css}</style>`)
-    .replace(/src="logo\.svg"/g, `src="data:image/svg+xml,${svg}"`)
-    .replace(/<script type="module" src="game\.js"><\/script>/, `<script type="module">${js}</script>`);
+    .replace(/<link rel="stylesheet" href="styles\.css">/, () => `<style>${css}</style>`)
+    .replace(/src="logo\.svg"/g, () => `src="data:image/svg+xml,${svg}"`)
+    .replace(/<script type="module" src="game\.js"><\/script>/, () => `<script type="module">${js}</script>`);
 
   writeFileSync(join(publicDir, 'index.html'), html);
 }

@@ -7,6 +7,7 @@ import {
     cards, setCards,
     particles, setParticles,
     isRevealed, setIsRevealed,
+    revealComplete, setRevealComplete,
     ctx, setCtx,
     width, height, setDimensions,
     gameStarted,
@@ -30,6 +31,7 @@ import {
     updatePeerCount,
     reset as resetConnectionStatus
 } from './connection-status.js';
+import { emit } from './debug.js';
 
 // =============================================================================
 // INITIALIZATION
@@ -268,6 +270,7 @@ function setupMultiplayerHandlers() {
         // Update connection status when a new player joins
         if (isNewPlayer) {
             updatePeerCount(players.size);
+            emit('peerJoined', { peerId, count: players.size + 1 }); // +1 for local player
         }
 
         updatePlayerPositions();
@@ -385,6 +388,7 @@ function checkState() {
     if (votedCount === totalPlayers && totalPlayers > 0 && votedCount > 0) {
         elements.revealBtn.classList.remove('hidden');
         elements.revealBtn.classList.add('scale-in');
+        emit('allVotesIn', { count: votedCount });
     }
 }
 
@@ -417,6 +421,7 @@ function doReveal() {
 
     positionCardsForReveal();
     spawnConfetti();
+    emit('revealStarted', {});
 }
 
 function resetGame() {
@@ -431,6 +436,7 @@ function doReset() {
 
 function resetGameState() {
     setIsRevealed(false);
+    setRevealComplete(false);
 
     clearEngine();
 
@@ -478,6 +484,7 @@ function loop() {
 
 function updateLogic() {
     if (isRevealed) {
+        let allSettled = cards.length > 0;
         cards.forEach(card => {
             const smooth = config.revealSmooth;
             const cx = card.body.position.x;
@@ -491,8 +498,41 @@ function updateLogic() {
             const ca = card.body.angle;
             setCardAngle(card, ca + (card.targetAngle - ca) * smooth);
 
-            if (card.flipProgress < 1) card.flipProgress += config.flipSpeed;
+            if (card.flipProgress < 1) {
+                card.flipProgress += config.flipSpeed;
+            }
+
+            // Check if card has settled: flipped AND positioned
+            const positionSettled =
+                Math.abs(card.body.position.x - card.targetX) < 2 &&
+                Math.abs(card.body.position.y - card.targetY) < 2;
+            const flipSettled = card.flipProgress >= 1;
+
+            if (!positionSettled || !flipSettled) {
+                allSettled = false;
+            }
         });
+
+        // Emit revealComplete when all cards have finished flipping AND moving
+        if (allSettled && !revealComplete) {
+            setRevealComplete(true);
+            emit('revealComplete', {});
+        }
+    } else if (cards.length > 0) {
+        // Check if thrown cards have settled (for voting phase)
+        const velocityThreshold = 0.5;
+        const allCardsSettled = cards.every(card => {
+            const v = card.body.velocity;
+            const av = card.body.angularVelocity;
+            return Math.abs(v.x) < velocityThreshold &&
+                   Math.abs(v.y) < velocityThreshold &&
+                   Math.abs(av) < velocityThreshold;
+        });
+
+        if (allCardsSettled && !cards._settledEmitted) {
+            cards._settledEmitted = true;
+            emit('cardsSettled', { count: cards.length });
+        }
     }
 
     // Update particles in place
@@ -508,6 +548,58 @@ function updateLogic() {
     if (updatedParticles.length !== particles.length) {
         setParticles(updatedParticles);
     }
+}
+
+// =============================================================================
+// MOCK API FOR SCREENSHOTS
+// =============================================================================
+
+// Expose mock API for screenshot automation (bypasses P2P)
+if (typeof window !== 'undefined') {
+    window.__SPKR_MOCK__ = {
+        // Start game without P2P (for mock mode)
+        startGame(name, color) {
+            localPlayer.name = name;
+            localPlayer.color = color;
+            localPlayer.id = 'local-mock';
+            elements.colorInput.value = color;
+            elements.colorPreview.style.backgroundColor = color;
+            elements.nameInput.value = name;
+            elements.roomCodeDisplay.textContent = 'MOCK';
+            hideLobby();
+            hideLobbyStatus();
+            setAdvertising();
+            buildDeck();
+            renderHeader();
+        },
+        // Local player votes
+        vote(value) {
+            userVote(value);
+        },
+        // Add a fake remote player and spawn their card
+        addPlayer(id, name, color, vote) {
+            const pos = getPlayerPositions(players.size + 1)[players.size];
+            const player = { id, name, color, voted: true, vote, pos };
+            players.set(id, player);
+            spawnCard(player, vote);
+            updatePeerCount(players.size);
+            renderHeader();
+            checkState();
+        },
+        // Trigger reveal
+        reveal() {
+            doReveal();
+        },
+        // Get current state
+        getState() {
+            return {
+                players: players.size,
+                cards: cards.length,
+                isRevealed,
+                revealComplete
+            };
+        }
+    };
 }
 
 // =============================================================================

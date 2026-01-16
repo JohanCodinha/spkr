@@ -20,14 +20,15 @@ This application is **100% serverless**. There are no servers to maintain, no da
 
 Players connect directly to each other using **peer-to-peer WebRTC connections**, with peer discovery handled through the **BitTorrent DHT network**. Just share a 6-character room code and start estimating.
 
-## Screenshots
+## Demo
 
 <p align="center">
-  <img src="screenshots/01-lobby.png" alt="Lobby" width="400" />
+  <img src="screenshots/game-demo.gif" alt="Demo" width="600" />
 </p>
 
 <p align="center">
-  <img src="screenshots/03-reveal.png" alt="Cards Revealed" width="600" />
+  <img src="screenshots/01-lobby.png" alt="Lobby" width="400" />
+  <img src="screenshots/03-reveal.png" alt="Cards Revealed" width="400" />
 </p>
 
 ## How It Works

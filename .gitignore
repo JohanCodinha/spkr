@@ -1,3 +1,7 @@
 node_modules/
 *.webm
 preview.html
+
+# Playwright
+playwright-report/
+test-results/

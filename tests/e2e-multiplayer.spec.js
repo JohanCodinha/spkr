@@ -1,0 +1,248 @@
+// E2E Test: Full Multiplayer Flow
+// Tests the complete user journey with 3 players using real P2P connections
+
+import { test, expect } from '@playwright/test';
+import { createServer } from 'http';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '..');
+const PUBLIC = join(ROOT, 'public');
+
+const PORT = 3459;
+const URL = `http://localhost:${PORT}`;
+
+// Test configuration
+const PLAYERS = [
+  { name: 'Alice', color: '#8b5cf6' },
+  { name: 'Bob', color: '#3b82f6' },
+  { name: 'Charlie', color: '#10b981' },
+];
+
+const VOTES = {
+  round1: ['5', '8', '5'],
+  round2: ['3', '3', '3'],
+};
+
+let server;
+
+// Setup debug hooks on a page
+async function setupHooks(page) {
+  await page.evaluate(() => {
+    window.__SPKR_HOOKS__ = {};
+    window.__SPKR_STATE__ = {
+      roomCreated: false,
+      roomJoined: false,
+      peerCount: 0,
+      allVotesIn: false,
+      cardsSettled: false,
+      revealComplete: false,
+    };
+
+    window.__SPKR_HOOKS__.roomCreated = ({ code }) => {
+      window.__SPKR_STATE__.roomCreated = true;
+      window.__SPKR_STATE__.roomCode = code;
+    };
+
+    window.__SPKR_HOOKS__.roomJoined = ({ code }) => {
+      window.__SPKR_STATE__.roomJoined = true;
+    };
+
+    window.__SPKR_HOOKS__.peerJoined = ({ peerId, count }) => {
+      window.__SPKR_STATE__.peerCount = count;
+    };
+
+    window.__SPKR_HOOKS__.allVotesIn = ({ count }) => {
+      window.__SPKR_STATE__.allVotesIn = true;
+    };
+
+    window.__SPKR_HOOKS__.cardsSettled = ({ count }) => {
+      window.__SPKR_STATE__.cardsSettled = true;
+    };
+
+    window.__SPKR_HOOKS__.revealComplete = () => {
+      window.__SPKR_STATE__.revealComplete = true;
+    };
+  });
+}
+
+// Reset hook state for a new round
+async function resetHookState(page) {
+  await page.evaluate(() => {
+    window.__SPKR_STATE__.allVotesIn = false;
+    window.__SPKR_STATE__.cardsSettled = false;
+    window.__SPKR_STATE__.revealComplete = false;
+  });
+}
+
+// Wait helpers
+async function waitForCardsSettled(page, timeout = 15000) {
+  await page.waitForFunction(
+    () => window.__SPKR_STATE__?.cardsSettled === true,
+    { timeout }
+  );
+}
+
+async function waitForRevealComplete(page, timeout = 15000) {
+  await page.waitForFunction(
+    () => window.__SPKR_STATE__?.revealComplete === true,
+    { timeout }
+  );
+}
+
+// Start/stop server
+test.beforeAll(async () => {
+  const html = readFileSync(join(PUBLIC, 'index.html'), 'utf-8');
+  server = createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(html);
+  });
+  await new Promise(resolve => server.listen(PORT, resolve));
+});
+
+test.afterAll(async () => {
+  server?.close();
+});
+
+test.describe('Multiplayer Scrum Poker', () => {
+  test('full game flow with 3 players', async ({ browser }) => {
+    // Create 3 browser contexts (simulating 3 different users)
+    const contexts = await Promise.all([
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+    ]);
+
+    const pages = await Promise.all(contexts.map(ctx => ctx.newPage()));
+    const [page1, page2, page3] = pages;
+
+    try {
+      // =====================================================================
+      // PHASE 1: Load lobby
+      // =====================================================================
+      await test.step('all players load lobby', async () => {
+        await Promise.all(pages.map(p => p.goto(URL)));
+        await Promise.all(pages.map(p => setupHooks(p)));
+        await Promise.all(pages.map(p =>
+          expect(p.locator('#lobby-screen')).toBeVisible()
+        ));
+      });
+
+      // =====================================================================
+      // PHASE 2: Create room
+      // =====================================================================
+      let roomCode;
+      await test.step('Player 1 creates room', async () => {
+        await page1.fill('#lobby-name-input', PLAYERS[0].name);
+        await page1.evaluate((color) => {
+          document.querySelector('#lobby-color-input').value = color;
+        }, PLAYERS[0].color);
+
+        await page1.click('#create-room-btn');
+
+        await page1.waitForFunction(
+          () => window.__SPKR_STATE__?.roomCreated === true,
+          { timeout: 15000 }
+        );
+        await expect(page1.locator('#game-canvas')).toBeVisible();
+
+        roomCode = await page1.evaluate(() => window.__SPKR_STATE__.roomCode);
+        expect(roomCode).toHaveLength(6);
+      });
+
+      // =====================================================================
+      // PHASE 3: Other players join
+      // =====================================================================
+      await test.step('Players 2 and 3 join room', async () => {
+        // Player 2 joins
+        await page2.fill('#lobby-name-input', PLAYERS[1].name);
+        await page2.evaluate((color) => {
+          document.querySelector('#lobby-color-input').value = color;
+        }, PLAYERS[1].color);
+        await page2.fill('#room-code-input', roomCode);
+        await page2.click('#join-room-btn');
+        await expect(page2.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+        // Player 3 joins
+        await page3.fill('#lobby-name-input', PLAYERS[2].name);
+        await page3.evaluate((color) => {
+          document.querySelector('#lobby-color-input').value = color;
+        }, PLAYERS[2].color);
+        await page3.fill('#room-code-input', roomCode);
+        await page3.click('#join-room-btn');
+        await expect(page3.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+        // Wait for P2P mesh to form
+        await page1.waitForTimeout(3000);
+      });
+
+      // =====================================================================
+      // PHASE 4: Round 1 - Voting
+      // =====================================================================
+      await test.step('Round 1: all players vote', async () => {
+        for (let i = 0; i < pages.length; i++) {
+          const vote = VOTES.round1[i];
+          await pages[i].click(`.deck-card:has-text("${vote}")`);
+          await pages[i].waitForTimeout(500);
+        }
+
+        await waitForCardsSettled(page1);
+      });
+
+      // =====================================================================
+      // PHASE 5: Round 1 - Reveal
+      // =====================================================================
+      await test.step('Round 1: reveal cards', async () => {
+        await expect(page1.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
+        await page1.click('#reveal-btn');
+        await waitForRevealComplete(page1);
+      });
+
+      // =====================================================================
+      // PHASE 6: Reset
+      // =====================================================================
+      await test.step('reset game', async () => {
+        const canvas = page1.locator('#game-canvas');
+        const box = await canvas.boundingBox();
+        await page1.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+        await page1.waitForTimeout(1000);
+        await expect(page1.locator('.card-deck:not(.voted):not(.revealed)')).toBeVisible();
+
+        await Promise.all(pages.map(p => resetHookState(p)));
+      });
+
+      // =====================================================================
+      // PHASE 7: Round 2 - Consensus vote
+      // =====================================================================
+      await test.step('Round 2: consensus vote', async () => {
+        for (let i = 0; i < pages.length; i++) {
+          const vote = VOTES.round2[i];
+          await pages[i].click(`.deck-card:has-text("${vote}")`);
+          await pages[i].waitForTimeout(500);
+        }
+
+        await waitForCardsSettled(page1);
+      });
+
+      // =====================================================================
+      // PHASE 8: Round 2 - Reveal
+      // =====================================================================
+      await test.step('Round 2: reveal cards', async () => {
+        await expect(page1.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
+        await page1.click('#reveal-btn');
+        await waitForRevealComplete(page1);
+
+        // Verify final state
+        const state = await page1.evaluate(() => window.__SPKR_MOCK__?.getState?.());
+        expect(state.isRevealed).toBe(true);
+        expect(state.cards).toBe(3);
+      });
+
+    } finally {
+      await Promise.all(contexts.map(ctx => ctx.close()));
+    }
+  });
+});

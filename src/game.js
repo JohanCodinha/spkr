@@ -1,0 +1,517 @@
+// Joyful Scrum Poker - Game Logic with Multiplayer Support
+
+import * as mp from './multiplayer.js';
+import { config } from './config.js';
+import { FIBONACCI, RESET_BUTTON_RADIUS, REVEAL_RADIUS_RATIO, PARTICLE_GRAVITY, PARTICLE_DECAY } from './constants.js';
+import {
+    cards, setCards,
+    particles, setParticles,
+    isRevealed, setIsRevealed,
+    ctx, setCtx,
+    width, height, setDimensions,
+    gameStarted,
+    elements,
+    localPlayer, players,
+    engine,
+    getAllPlayers
+} from './state.js';
+import { getCardSize, getPlayerPositions, generateRandomName, generateRandomColor, loadIdentityFromStorage } from './utils.js';
+import { initEngine, clearEngine, spawnCard, setCardStatic, setCardPosition, setCardAngle, updateEngine } from './physics.js';
+import { drawTable, drawCards, drawResetButton, drawParticles, spawnConfetti } from './drawing.js';
+import { cacheElements, toggleSettings, updateConfig, updateIdentity, renderHeader } from './ui.js';
+import {
+    showLobby, hideLobby, hideLobbyStatus,
+    createRoom, joinRoom, leaveRoom, copyRoomCode, checkUrlForRoom,
+    setStartGameCallback
+} from './lobby.js';
+import {
+    initConnectionStatus,
+    setAdvertising,
+    updatePeerCount,
+    reset as resetConnectionStatus
+} from './connection-status.js';
+
+// =============================================================================
+// INITIALIZATION
+// =============================================================================
+
+function init() {
+    cacheElements();
+    setupEventListeners();
+    setCtx(elements.canvas.getContext('2d'));
+
+    // Initialize Matter.js engine
+    initEngine();
+
+    // Initialize connection status UI
+    initConnectionStatus();
+
+    // Load saved name or generate random placeholder
+    const saved = loadIdentityFromStorage();
+    const randomName = generateRandomName();
+
+    // Set placeholder to random name suggestion
+    elements.lobbyNameInput.placeholder = randomName;
+
+    // If saved name exists, use it as value; otherwise leave empty (will use placeholder)
+    if (saved.name) {
+        elements.lobbyNameInput.value = saved.name;
+        localPlayer.name = saved.name;
+    } else {
+        localPlayer.name = randomName; // Will be used if input stays empty
+    }
+
+    // Always use random color in lobby (only saved when entering room)
+    const color = generateRandomColor();
+    localPlayer.color = color;
+    elements.lobbyColorInput.value = color;
+    elements.lobbyColorPreview.style.backgroundColor = color;
+
+    // Set up multiplayer handlers
+    setupMultiplayerHandlers();
+
+    // Set callback for lobby to start game
+    setStartGameCallback(startGame);
+
+    // Start render loop
+    resize();
+    window.addEventListener('resize', resize);
+    requestAnimationFrame(loop);
+
+    // Check for room code in URL and auto-join
+    checkUrlForRoom();
+}
+
+function setupEventListeners() {
+    // Lobby buttons
+    elements.createRoomBtn.addEventListener('click', createRoom);
+    elements.joinRoomBtn.addEventListener('click', joinRoom);
+
+    // Room code input - allow Enter to join
+    elements.roomCodeInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') joinRoom();
+    });
+
+    // Lobby color preview (don't save until room entry)
+    elements.lobbyColorInput.addEventListener('input', (e) => {
+        elements.lobbyColorPreview.style.backgroundColor = e.target.value;
+        localPlayer.color = e.target.value;
+    });
+
+    // Game header buttons
+    elements.copyRoomBtn.addEventListener('click', copyRoomCode);
+    elements.leaveRoomBtn.addEventListener('click', handleLeaveRoom);
+    elements.settingsBtn.addEventListener('click', toggleSettings);
+
+    // Identity controls
+    elements.colorInput.addEventListener('input', (e) => {
+        updateIdentity('color', e.target.value);
+    });
+    elements.nameInput.addEventListener('input', (e) => {
+        updateIdentity('name', e.target.value);
+    });
+
+    // Reveal button
+    elements.revealBtn.addEventListener('click', revealCards);
+
+    // Config sliders
+    document.querySelectorAll('[data-config]').forEach(slider => {
+        slider.addEventListener('input', (e) => {
+            updateConfig(e.target.dataset.config, e.target.value);
+        });
+    });
+}
+
+function handleLeaveRoom() {
+    leaveRoom();
+    resetGameState();
+}
+
+function startGame() {
+    hideLobby();
+    hideLobbyStatus();
+
+    elements.canvas.addEventListener('click', handleCanvasClick);
+    elements.canvas.addEventListener('mousemove', handleCanvasMove, { passive: true });
+
+    // Start in advertising mode (waiting for peers)
+    setAdvertising();
+    updatePeerCount(players.size);
+
+    buildDeck();
+    renderHeader();
+}
+
+function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    setDimensions(w, h);
+    elements.canvas.width = w * dpr;
+    elements.canvas.height = h * dpr;
+    elements.canvas.style.width = w + 'px';
+    elements.canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function buildDeck() {
+    elements.deck.innerHTML = '';
+    FIBONACCI.forEach(val => {
+        const btn = document.createElement('button');
+        btn.className = 'deck-card';
+        btn.innerText = val;
+        btn.setAttribute('role', 'button');
+        btn.setAttribute('aria-label', `Vote ${val}`);
+        btn.onclick = () => userVote(val);
+        btn.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                userVote(val);
+            }
+        };
+        elements.deck.appendChild(btn);
+    });
+}
+
+// =============================================================================
+// EVENT HANDLERS
+// =============================================================================
+
+function handleCanvasClick(e) {
+    if (!isRevealed) return;
+
+    const rect = elements.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const cx = width / 2;
+    const cy = height / 2;
+    const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+
+    if (dist <= RESET_BUTTON_RADIUS) {
+        resetGame();
+    }
+}
+
+function handleCanvasMove(e) {
+    if (!isRevealed) {
+        elements.canvas.style.cursor = 'default';
+        return;
+    }
+
+    const rect = elements.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const cx = width / 2;
+    const cy = height / 2;
+    const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+
+    elements.canvas.style.cursor = dist <= RESET_BUTTON_RADIUS ? 'pointer' : 'default';
+}
+
+// =============================================================================
+// MULTIPLAYER EVENT HANDLERS
+// =============================================================================
+
+function setupMultiplayerHandlers() {
+    mp.onPeerJoin((peerId) => {
+        console.log('Peer joined:', peerId);
+        // Broadcast our info so they know about us
+        mp.broadcastPlayerInfo({
+            name: localPlayer.name,
+            color: localPlayer.color,
+            voted: localPlayer.voted
+        });
+
+        // If we have voted, re-broadcast so new peer sees our card
+        if (localPlayer.voted && localPlayer.vote !== null) {
+            mp.broadcastVote(localPlayer.vote, {
+                id: localPlayer.id,
+                name: localPlayer.name,
+                color: localPlayer.color
+            });
+        }
+
+        // If cards are revealed, let the new peer know
+        if (isRevealed) {
+            mp.broadcastReveal();
+        }
+    });
+
+    mp.onPeerLeave((peerId) => {
+        console.log('Peer left:', peerId);
+        // Remove player and their cards
+        players.delete(peerId);
+        setCards(cards.filter(c => c.player.id !== peerId));
+
+        // Update connection status
+        updatePeerCount(players.size);
+
+        renderHeader();
+        checkState();
+    });
+
+    mp.onPlayerInfoReceived((data, peerId) => {
+        console.log('Player info received:', peerId, data);
+        const existingPlayer = players.get(peerId);
+        const isNewPlayer = !existingPlayer;
+
+        players.set(peerId, {
+            id: peerId,
+            name: data.name,
+            color: data.color,
+            voted: data.voted || (existingPlayer?.voted ?? false),
+            pos: existingPlayer?.pos || { x: 0.5, y: 0.5 }
+        });
+
+        // Update connection status when a new player joins
+        if (isNewPlayer) {
+            updatePeerCount(players.size);
+        }
+
+        updatePlayerPositions();
+        renderHeader();
+    });
+
+    mp.onVoteReceived((data, peerId) => {
+        console.log('Vote received:', peerId, data);
+        let player = players.get(peerId);
+
+        // If player doesn't exist yet, create from vote data
+        if (!player && data.player) {
+            player = {
+                id: peerId,
+                name: data.player.name,
+                color: data.player.color,
+                voted: false,
+                pos: { x: 0.5, y: 0.5 }
+            };
+            players.set(peerId, player);
+            updatePlayerPositions();
+            updatePeerCount(players.size);
+        }
+
+        // Check if card already exists for this player (avoid duplicates)
+        const cardExists = cards.some(c => c.player.id === peerId);
+
+        // Spawn card if player exists and no card exists yet
+        if (player && !cardExists) {
+            player.voted = true;
+            player.vote = data.value;
+            const card = spawnCard(player, data.value);
+
+            // If already revealed, position this card immediately
+            if (isRevealed && card) {
+                positionCardsForReveal();
+            }
+
+            renderHeader();
+            checkState();
+        }
+    });
+
+    mp.onRevealReceived((data, peerId) => {
+        console.log('Reveal received from:', peerId);
+        if (!isRevealed) {
+            doReveal();
+        }
+    });
+
+    mp.onResetReceived((data, peerId) => {
+        console.log('Reset received from:', peerId);
+        doReset();
+    });
+
+    mp.onStateRequest((data, peerId) => {
+        // Send current game state to the requesting peer
+        const state = {
+            isRevealed,
+            players: Array.from(players.entries()),
+            localVote: localPlayer.voted ? localPlayer.vote : null
+        };
+        mp.sendStateTo(peerId, state);
+    });
+
+    mp.onStateSync((data, peerId) => {
+        // Sync state from another peer
+        if (data.isRevealed && !isRevealed) {
+            doReveal();
+        }
+    });
+}
+
+function updatePlayerPositions() {
+    const remotePlayers = Array.from(players.values());
+    const positions = getPlayerPositions(remotePlayers.length);
+
+    remotePlayers.forEach((player, i) => {
+        player.pos = positions[i];
+        players.set(player.id, player);
+    });
+}
+
+// =============================================================================
+// GAME ACTIONS
+// =============================================================================
+
+function userVote(val) {
+    if (localPlayer.voted) return;
+
+    localPlayer.voted = true;
+    localPlayer.vote = val;
+
+    // Spawn card locally
+    spawnCard({ ...localPlayer, pos: { x: 0.5, y: 1.1 } }, val);
+
+    // Broadcast to peers
+    mp.broadcastVote(val, {
+        id: localPlayer.id,
+        name: localPlayer.name,
+        color: localPlayer.color
+    });
+
+    elements.deck.classList.add('voted');
+    checkState();
+    renderHeader();
+}
+
+function checkState() {
+    const allPlayers = getAllPlayers();
+    const votedCount = allPlayers.filter(p => p.voted).length;
+    const totalPlayers = allPlayers.length;
+
+    // Show reveal button only if everyone has voted
+    if (votedCount === totalPlayers && totalPlayers > 0 && votedCount > 0) {
+        elements.revealBtn.classList.remove('hidden');
+        elements.revealBtn.classList.add('scale-in');
+    }
+}
+
+function revealCards() {
+    doReveal();
+    mp.broadcastReveal();
+}
+
+function positionCardsForReveal() {
+    const cardSize = getCardSize();
+    const numCards = cards.length;
+    const cardDiagonal = Math.sqrt(cardSize.w * cardSize.w + cardSize.h * cardSize.h);
+    const minRadiusForSpacing = (cardDiagonal * numCards) / (2 * Math.PI) + cardDiagonal * 0.3;
+    const baseRadius = Math.min(width, height) * REVEAL_RADIUS_RATIO;
+    const radius = Math.max(baseRadius, minRadiusForSpacing);
+
+    cards.forEach((card, i) => {
+        setCardStatic(card, true);
+        const angle = (i / cards.length) * Math.PI * 2 - Math.PI / 2;
+        card.targetX = width / 2 + Math.cos(angle) * radius;
+        card.targetY = height / 2 + Math.sin(angle) * radius;
+        card.targetAngle = 0;
+    });
+}
+
+function doReveal() {
+    setIsRevealed(true);
+    elements.revealBtn.classList.add('hidden');
+    elements.deck.classList.add('revealed');
+
+    positionCardsForReveal();
+    spawnConfetti();
+}
+
+function resetGame() {
+    doReset();
+    mp.broadcastReset();
+}
+
+function doReset() {
+    resetGameState();
+    renderHeader();
+}
+
+function resetGameState() {
+    setIsRevealed(false);
+
+    clearEngine();
+
+    setCards([]);
+    setParticles([]);
+    localPlayer.voted = false;
+    localPlayer.vote = null;
+
+    // Reset all remote players' voted status
+    players.forEach((player, id) => {
+        player.voted = false;
+        player.vote = null;
+        players.set(id, player);
+    });
+
+    if (elements.revealBtn) {
+        elements.revealBtn.classList.add('hidden');
+    }
+    if (elements.deck) {
+        elements.deck.classList.remove('voted', 'revealed');
+    }
+}
+
+// =============================================================================
+// MAIN LOOP
+// =============================================================================
+
+function loop() {
+    requestAnimationFrame(loop);
+
+    if (!gameStarted) {
+        // Just clear in lobby
+        ctx.clearRect(0, 0, width, height);
+        return;
+    }
+
+    updateEngine();
+    updateLogic();
+    ctx.clearRect(0, 0, width, height);
+    drawTable();
+    drawParticles();
+    drawCards();
+    drawResetButton();
+}
+
+function updateLogic() {
+    if (isRevealed) {
+        cards.forEach(card => {
+            const smooth = config.revealSmooth;
+            const cx = card.body.position.x;
+            const cy = card.body.position.y;
+
+            setCardPosition(card,
+                cx + (card.targetX - cx) * smooth,
+                cy + (card.targetY - cy) * smooth
+            );
+
+            const ca = card.body.angle;
+            setCardAngle(card, ca + (card.targetAngle - ca) * smooth);
+
+            if (card.flipProgress < 1) card.flipProgress += config.flipSpeed;
+        });
+    }
+
+    // Update particles in place
+    const updatedParticles = particles.filter(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += PARTICLE_GRAVITY;
+        p.life -= PARTICLE_DECAY;
+        return p.life > 0;
+    });
+
+    // Only update if changed
+    if (updatedParticles.length !== particles.length) {
+        setParticles(updatedParticles);
+    }
+}
+
+// =============================================================================
+// START
+// =============================================================================
+
+init();

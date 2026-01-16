@@ -181,6 +181,8 @@ async function main() {
     // Convert video to MP4 (GitHub-friendly)
     // ============================================
     console.log('\n🎬 Converting video to MP4...');
+    // Small delay to ensure video file is fully written
+    await new Promise(r => setTimeout(r, 500));
     const files = readdirSync(SCREENSHOTS_DIR);
     const videoFile = files.find(f => f.endsWith('.webm'));
 

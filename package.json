@@ -1,10 +1,15 @@
 {
   "name": "scrum-poker-build",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "screenshots": "node scripts/screenshots.js"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "@playwright/test": "^1.57.0",
+    "esbuild": "^0.24.0",
+    "playwright": "^1.57.0",
+    "serve": "^14.2.5"
   }
 }

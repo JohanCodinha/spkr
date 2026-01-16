@@ -1,40 +1,44 @@
-const esbuild = require('esbuild');
-const fs = require('fs');
-const path = require('path');
+import esbuild from 'esbuild';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const srcDir = path.join(__dirname, 'src');
-const publicDir = path.join(__dirname, 'public');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const srcDir = join(__dirname, 'src');
+const publicDir = join(__dirname, 'public');
 
 async function build() {
-  fs.mkdirSync(publicDir, { recursive: true });
+  mkdirSync(publicDir, { recursive: true });
 
   // Bundle and minify JS
+  // Use ESM format to preserve the external Trystero import from esm.sh
   const js = (await esbuild.build({
-    entryPoints: [path.join(srcDir, 'game.js')],
+    entryPoints: [join(srcDir, 'game.js')],
     bundle: true,
     minify: true,
-    format: 'iife',
+    format: 'esm',
+    external: ['https://esm.sh/*'],
     write: false,
   })).outputFiles[0].text;
 
   // Minify CSS
   const css = (await esbuild.transform(
-    fs.readFileSync(path.join(srcDir, 'styles.css'), 'utf-8'),
+    readFileSync(join(srcDir, 'styles.css'), 'utf-8'),
     { loader: 'css', minify: true }
   )).code;
 
   // URL-encode SVG (more efficient than base64 for text)
-  const svg = fs.readFileSync(path.join(srcDir, 'logo.svg'), 'utf-8')
+  const svg = readFileSync(join(srcDir, 'logo.svg'), 'utf-8')
     .replace(/"/g, "'").replace(/%/g, '%25').replace(/#/g, '%23')
     .replace(/</g, '%3C').replace(/>/g, '%3E').replace(/\s+/g, ' ');
 
   // Build HTML
-  const html = fs.readFileSync(path.join(srcDir, 'index.html'), 'utf-8')
+  const html = readFileSync(join(srcDir, 'index.html'), 'utf-8')
     .replace(/<link rel="stylesheet" href="styles\.css">/, `<style>${css}</style>`)
     .replace(/src="logo\.svg"/g, `src="data:image/svg+xml,${svg}"`)
-    .replace(/<script type="module" src="game\.js"><\/script>/, `<script>${js}</script>`);
+    .replace(/<script type="module" src="game\.js"><\/script>/, `<script type="module">${js}</script>`);
 
-  fs.writeFileSync(path.join(publicDir, 'index.html'), html);
+  writeFileSync(join(publicDir, 'index.html'), html);
 }
 
 build().catch(err => { console.error(err); process.exit(1); });

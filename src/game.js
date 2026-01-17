@@ -2,7 +2,18 @@
 
 import * as mp from './multiplayer.js';
 import { config } from './config.js';
-import { FIBONACCI, RESET_BUTTON_RADIUS, REVEAL_RADIUS_RATIO, PARTICLE_GRAVITY, PARTICLE_DECAY } from './constants.js';
+import {
+    FIBONACCI,
+    RESET_BUTTON_RADIUS,
+    REVEAL_RADIUS_RATIO,
+    PARTICLE_GRAVITY,
+    PARTICLE_DECAY,
+    NAME_ADJECTIVES,
+    NAME_ANIMALS,
+    RANDOM_COLORS,
+    STORAGE_KEY_NAME,
+    STORAGE_KEY_COLOR
+} from './constants.js';
 import {
     cards, setCards,
     particles, setParticles,
@@ -16,7 +27,7 @@ import {
     engine,
     getAllPlayers
 } from './state.js';
-import { getCardSize, getPlayerPositions, generateRandomName, generateRandomColor, loadIdentityFromStorage } from './utils.js';
+import { getCardSize } from './drawing.js';
 import { initEngine, clearEngine, spawnCard, setCardStatic, setCardPosition, setCardAngle, updateEngine } from './physics.js';
 import { drawTable, drawCards, drawResetButton, drawParticles, spawnConfetti } from './drawing.js';
 import { cacheElements, toggleSettings, updateConfig, updateIdentity, renderHeader } from './ui.js';
@@ -32,6 +43,37 @@ import {
     reset as resetConnectionStatus
 } from './connection-status.js';
 import { emit } from './debug.js';
+
+// =============================================================================
+// LOCAL HELPERS
+// =============================================================================
+
+function getPlayerPositions(count) {
+    const positions = [];
+    for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+        const x = 0.5 + Math.cos(angle) * 0.6;
+        const y = 0.5 + Math.sin(angle) * 0.6;
+        positions.push({ x, y });
+    }
+    return positions;
+}
+
+function generateRandomName() {
+    const adj = NAME_ADJECTIVES[Math.floor(Math.random() * NAME_ADJECTIVES.length)];
+    const animal = NAME_ANIMALS[Math.floor(Math.random() * NAME_ANIMALS.length)];
+    return `${adj} ${animal}`;
+}
+
+function generateRandomColor() {
+    return RANDOM_COLORS[Math.floor(Math.random() * RANDOM_COLORS.length)];
+}
+
+function loadIdentityFromStorage() {
+    const savedName = localStorage.getItem(STORAGE_KEY_NAME);
+    const savedColor = localStorage.getItem(STORAGE_KEY_COLOR);
+    return { name: savedName, color: savedColor };
+}
 
 // =============================================================================
 // INITIALIZATION
@@ -551,11 +593,10 @@ function updateLogic() {
 }
 
 // =============================================================================
-// MOCK API FOR SCREENSHOTS
+// MOCK API FOR SCREENSHOTS (stripped from production builds)
 // =============================================================================
 
-// Expose mock API for screenshot automation (bypasses P2P)
-if (typeof window !== 'undefined') {
+if (__DEBUG__) {
     window.__SPKR_MOCK__ = {
         // Start game without P2P (for mock mode)
         startGame(name, color) {

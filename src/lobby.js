@@ -2,10 +2,15 @@
 // LOBBY FUNCTIONS
 // =============================================================================
 
+import { STORAGE_KEY_NAME, STORAGE_KEY_COLOR } from './constants.js';
 import { elements, localPlayer, players, setGameStarted } from './state.js';
-import { saveIdentityToStorage } from './utils.js';
 import * as mp from './multiplayer.js';
 import { emit } from './debug.js';
+
+export function saveIdentityToStorage(name, color) {
+    if (name) localStorage.setItem(STORAGE_KEY_NAME, name);
+    if (color) localStorage.setItem(STORAGE_KEY_COLOR, color);
+}
 
 // Callback for starting the game (set from game.js)
 let onStartGame = null;

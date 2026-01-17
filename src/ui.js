@@ -4,7 +4,7 @@
 
 import { config } from './config.js';
 import { elements, setElements, localPlayer, cards, getAllPlayers } from './state.js';
-import { saveIdentityToStorage } from './utils.js';
+import { saveIdentityToStorage } from './lobby.js';
 import * as mp from './multiplayer.js';
 
 export function cacheElements() {

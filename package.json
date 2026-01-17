@@ -4,14 +4,19 @@
   "type": "module",
   "scripts": {
     "build": "node build.js",
+    "build:debug": "DEBUG=true node build.js",
     "screenshots": "node scripts/screenshots.js",
-    "test": "npx playwright test",
-    "test:headed": "npx playwright test --headed",
+    "test": "npm run test:unit && npm run build:debug && npm run test:e2e",
+    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:e2e": "npx playwright test",
+    "test:headed": "npm run build:debug && npx playwright test --headed",
     "test:report": "npx playwright show-report"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
+    "@jest/globals": "^30.2.0",
+    "@playwright/test": "latest",
     "esbuild": "^0.24.0",
-    "playwright": "^1.57.0"
+    "jest": "^30.2.0",
+    "playwright": "latest"
   }
 }

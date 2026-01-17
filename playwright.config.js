@@ -4,6 +4,7 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests',
+  testMatch: '**/*.spec.js',
   timeout: isCI ? 120000 : 60000, // Longer timeout in CI for P2P discovery
   expect: {
     timeout: isCI ? 20000 : 10000,

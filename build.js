@@ -7,19 +7,22 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(__dirname, 'src');
 const publicDir = join(__dirname, 'public');
 
+// Check for debug mode via environment variable
+const isDebug = process.env.DEBUG === 'true';
+
 async function build() {
   mkdirSync(publicDir, { recursive: true });
 
   // Bundle and minify JS
   // Use ESM format to preserve the external Trystero import from esm.sh
-  // Define __DEBUG__ as false so debug hooks get tree-shaken out in prod
+  // __DEBUG__ controls whether test hooks/mocks are included
   const js = (await esbuild.build({
     entryPoints: [join(srcDir, 'game.js')],
     bundle: true,
-    minify: true,
+    minify: !isDebug,
     format: 'esm',
     external: ['https://esm.sh/*'],
-    define: { '__DEBUG__': 'false' },
+    define: { '__DEBUG__': isDebug ? 'true' : 'false' },
     write: false,
   })).outputFiles[0].text;
 

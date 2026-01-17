@@ -3,8 +3,24 @@
 // =============================================================================
 
 import { config } from './config.js';
+import {
+    MOBILE_BREAKPOINT,
+    DESKTOP_BREAKPOINT,
+    MOBILE_THROW_FORCE,
+    DESKTOP_THROW_FORCE
+} from './constants.js';
 import { cards, width, height, engine, setEngine, setCards } from './state.js';
-import { getCardSize, getThrowForce } from './utils.js';
+import { getCardSize } from './drawing.js';
+
+function getThrowForce() {
+    const screenWidth = window.innerWidth;
+
+    if (screenWidth <= MOBILE_BREAKPOINT) return MOBILE_THROW_FORCE;
+    if (screenWidth >= DESKTOP_BREAKPOINT) return DESKTOP_THROW_FORCE;
+
+    const t = (screenWidth - MOBILE_BREAKPOINT) / (DESKTOP_BREAKPOINT - MOBILE_BREAKPOINT);
+    return MOBILE_THROW_FORCE + t * (DESKTOP_THROW_FORCE - MOBILE_THROW_FORCE);
+}
 
 const { Engine, Bodies, Composite, Body } = Matter;
 

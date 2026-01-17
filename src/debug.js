@@ -1,10 +1,9 @@
 // Debug hooks for screenshot automation
-// Hooks are always active when window.__SPKR_HOOKS__ is set (for testing)
-// This allows test harnesses to inject hooks even in production builds
+// Stripped from production builds via __DEBUG__ flag (set by esbuild)
 
 export function emit(event, detail = {}) {
-  if (typeof window !== 'undefined' && window.__SPKR_HOOKS__) {
-    const handler = window.__SPKR_HOOKS__[event];
+  if (__DEBUG__) {
+    const handler = window.__SPKR_HOOKS__?.[event];
     if (handler) handler(detail);
   }
 }

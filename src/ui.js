@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { elements, setElements, localPlayer, cards, getAllPlayers } from './state.js';
 import { saveIdentityToStorage } from './lobby.js';
 import * as mp from './multiplayer.js';
+import observerIconSvg from './observer-icon.svg';
 
 export function cacheElements() {
     setElements({
@@ -119,7 +120,8 @@ export function renderHeader() {
         if (p.isObserver) {
             const badge = document.createElement('div');
             badge.className = 'avatar-observer-badge';
-            badge.innerHTML = '&#128065;'; // Eye emoji
+            badge.style.color = p.color;
+            badge.innerHTML = observerIconSvg;
             badge.setAttribute('aria-label', 'Observer');
             wrapper.appendChild(badge);
         }

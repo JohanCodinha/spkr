@@ -24,6 +24,7 @@ async function build() {
     format: 'esm',
     external: ['https://esm.sh/*'],
     define: { '__DEBUG__': isDebug ? 'true' : 'false' },
+    loader: { '.svg': 'text' },
     write: false,
   })).outputFiles[0].text;
 

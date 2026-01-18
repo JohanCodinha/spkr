@@ -27,7 +27,7 @@ import {
     engine,
     getAllPlayers
 } from './state.js';
-import { getCardSize } from './drawing.js';
+import { getCardSize, getDisplayName, renderCardFront, renderCardBack } from './drawing.js';
 import { initEngine, clearEngine, spawnCard, setCardStatic, setCardPosition, setCardAngle, updateEngine } from './physics.js';
 import { drawTable, drawCards, drawResetButton, drawParticles, spawnConfetti } from './drawing.js';
 import { cacheElements, toggleSettings, updateConfig, updateIdentity, renderHeader } from './ui.js';
@@ -639,7 +639,12 @@ if (__DEBUG__) {
                 isRevealed,
                 revealComplete
             };
-        }
+        },
+        // Pure rendering functions for testing
+        getCardSize,
+        getDisplayName,
+        renderCardFront,
+        renderCardBack
     };
 }
 

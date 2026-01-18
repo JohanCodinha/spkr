@@ -1,14 +1,13 @@
 // E2E Test: Full Multiplayer Flow
 // Tests the complete user journey with 3 players using real P2P connections
+// Requires Node 20.11+ for import.meta.dirname
 
 import { test, expect } from '@playwright/test';
 import { createServer } from 'http';
 import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, '..');
+const ROOT = join(import.meta.dirname, '..');
 const PUBLIC = join(ROOT, 'public');
 
 const PORT = 3459;

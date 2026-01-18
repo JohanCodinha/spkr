@@ -14,6 +14,16 @@ export const SCREEN_SCALE_MIN = 0.7;
 export const SCREEN_SCALE_MAX = 1.2;
 export const SCREEN_SCALE_REFERENCE = 800;
 
+// Pure function for card size calculation
+export function calculateCardSize(cardScale, windowWidth, windowHeight) {
+    const screenScale = Math.min(windowWidth, windowHeight) / SCREEN_SCALE_REFERENCE;
+    const adaptiveScale = Math.max(SCREEN_SCALE_MIN, Math.min(SCREEN_SCALE_MAX, screenScale));
+    return {
+        w: BASE_CARD_W * cardScale * adaptiveScale,
+        h: BASE_CARD_H * cardScale * adaptiveScale
+    };
+}
+
 // Responsive breakpoints
 export const MOBILE_BREAKPOINT = 480;
 export const DESKTOP_BREAKPOINT = 1200;

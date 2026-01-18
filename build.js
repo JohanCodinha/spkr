@@ -27,11 +27,10 @@ async function build() {
     write: false,
   })).outputFiles[0].text;
 
-  // Minify CSS
-  const css = (await esbuild.transform(
-    readFileSync(join(srcDir, 'styles.css'), 'utf-8'),
-    { loader: 'css', minify: true }
-  )).code;
+  // Minify CSS (concatenate fonts + styles, then minify)
+  const fontsCSS = readFileSync(join(srcDir, 'fonts.css'), 'utf-8');
+  const stylesCSS = readFileSync(join(srcDir, 'styles.css'), 'utf-8');
+  const css = (await esbuild.transform(fontsCSS + stylesCSS, { loader: 'css', minify: true })).code;
 
   // Read SVG for inlining
   const svg = readFileSync(join(srcDir, 'logo.svg'), 'utf-8');
@@ -39,7 +38,8 @@ async function build() {
   // Build HTML using cheerio for robust DOM manipulation
   const $ = load(readFileSync(join(srcDir, 'index.html'), 'utf-8'));
 
-  // Inline CSS
+  // Inline CSS (fonts.css + styles.css combined)
+  $('link[href="fonts.css"]').remove();
   $('link[href="styles.css"]').replaceWith(`<style>${css}</style>`);
 
   // Inline SVG directly

@@ -2,6 +2,7 @@ import esbuild from 'esbuild';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { load } from 'cheerio';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(__dirname, 'src');
@@ -32,19 +33,26 @@ async function build() {
     { loader: 'css', minify: true }
   )).code;
 
-  // URL-encode SVG (more efficient than base64 for text)
-  const svg = readFileSync(join(srcDir, 'logo.svg'), 'utf-8')
-    .replace(/"/g, "'").replace(/%/g, '%25').replace(/#/g, '%23')
-    .replace(/</g, '%3C').replace(/>/g, '%3E').replace(/\s+/g, ' ');
+  // Read SVG for inlining
+  const svg = readFileSync(join(srcDir, 'logo.svg'), 'utf-8');
 
-  // Build HTML
-  // Note: Use function replacer to avoid $& special pattern in replacement string
-  const html = readFileSync(join(srcDir, 'index.html'), 'utf-8')
-    .replace(/<link rel="stylesheet" href="styles\.css">/, () => `<style>${css}</style>`)
-    .replace(/src="logo\.svg"/g, () => `src="data:image/svg+xml,${svg}"`)
-    .replace(/<script type="module" src="game\.js"><\/script>/, () => `<script type="module">${js}</script>`);
+  // Build HTML using cheerio for robust DOM manipulation
+  const $ = load(readFileSync(join(srcDir, 'index.html'), 'utf-8'));
 
-  writeFileSync(join(publicDir, 'index.html'), html);
+  // Inline CSS
+  $('link[href="styles.css"]').replaceWith(`<style>${css}</style>`);
+
+  // Inline SVG directly
+  $('img[src="logo.svg"]').replaceWith(svg);
+
+  // Inline JS - find the entry script comment and replace with script tag
+  $('body').append(`<script type="module">${js}</script>`);
+  // Remove the placeholder comment
+  $('body').contents().filter(function() {
+    return this.type === 'comment' && this.data.trim() === 'ENTRY_SCRIPT';
+  }).remove();
+
+  writeFileSync(join(publicDir, 'index.html'), $.html());
 }
 
 build().catch(err => { console.error(err); process.exit(1); });

@@ -89,8 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: RELEASE_NOTES.md
-          sparse-checkout-cone-mode: false
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
@@ -106,11 +105,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -f RELEASE_NOTES.md ]; then
+          # Get tag annotation message (empty for lightweight tags)
+          TAG_MSG=$(git tag -l --format='%(contents)' ${{ github.ref_name }} | head -c 10000)
+
+          if [ -n "$TAG_MSG" ]; then
             gh release create ${{ github.ref_name }} \
               --repo ${{ github.repository }} \
               --title "${{ github.ref_name }}" \
-              --notes-file RELEASE_NOTES.md \
+              --notes "$TAG_MSG" \
               public/index.html \
               screenshots/*.png \
               screenshots/*.gif \
@@ -119,7 +121,7 @@ jobs:
             gh release create ${{ github.ref_name }} \
               --repo ${{ github.repository }} \
               --title "${{ github.ref_name }}" \
-              --notes "Release ${{ github.ref_name }} - See [README](https://github.com/${{ github.repository }}#readme) for features and usage." \
+              --generate-notes \
               public/index.html \
               screenshots/*.png \
               screenshots/*.gif \

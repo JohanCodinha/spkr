@@ -97,15 +97,17 @@ The build outputs a self-contained `public/index.html` with all JavaScript, CSS,
 
 ## Releasing
 
-1. Update `RELEASE_NOTES.md` with user-focused changelog
-2. Commit and push to main
-3. Create and push a tag: `git tag v1.2.3 && git push --tags`
+```bash
+# With release notes (opens editor for markdown)
+git tag -a v1.2.3
+git push --tags
 
-The release workflow will:
-- Run tests and build
-- Generate fresh screenshots
-- Create a GitHub Release with all assets
-- Trigger deployment to tools.joadn.com
+# Or quick release (auto-generates notes from commits)
+git tag v1.2.3
+git push --tags
+```
+
+The release workflow will run tests, generate screenshots, create a GitHub Release, and deploy to tools.joadn.com.
 
 ## License
 

@@ -9,7 +9,7 @@ export default defineConfig({
   expect: {
     timeout: isCI ? 20000 : 10000,
     toHaveScreenshot: {
-      maxDiffPixelRatio: 0.01, // Allow minor rendering differences across platforms
+      maxDiffPixelRatio: 0.05, // Allow rendering differences across platforms (esp. emoji)
     },
   },
   snapshotPathTemplate: '{testDir}/{testFileDir}/{testFileName}-snapshots/{arg}{ext}', // Platform-independent

@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.57.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+
+      - run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Build debug
+        run: npm run build:debug
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Build production
+        run: npm run build
+
+      - name: Upload public
+        uses: actions/upload-artifact@v4
+        with:
+          name: public
+          path: public/
+          retention-days: 1
+
+  screenshots:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.57.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+
+      - run: npm ci
+
+      - name: Install ffmpeg
+        run: apt-get update && apt-get install -y ffmpeg
+
+      - name: Build debug
+        run: npm run build:debug
+
+      - name: Generate screenshots
+        run: npm run screenshots
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: |
+            screenshots/*.png
+            screenshots/*.gif
+            screenshots/*.mp4
+          retention-days: 1
+
+  release:
+    needs: [test, screenshots]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: public
+          path: public/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --repo ${{ github.repository }} \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            public/index.html \
+            screenshots/*.png \
+            screenshots/*.gif \
+            screenshots/*.mp4
+
+      - name: Trigger parent deploy
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          gh workflow run deploy.yml \
+            --repo JohanCodinha/tools-gateway \
+            -f version=${{ github.ref_name }}

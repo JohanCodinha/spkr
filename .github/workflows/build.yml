@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # JOB 1: Setup - shared prep work, cached
+  # JOB 1: Setup - unit tests + build debug, upload built workspace
   # ------------------------------------------------------------------
   setup:
     runs-on: ubuntu-latest
@@ -57,21 +57,20 @@ jobs:
       - name: Build debug (includes test hooks)
         run: npm run build:debug
 
-      # Upload workspace for parallel jobs
+      # Upload only source + built files (not node_modules)
       - name: Upload workspace
         uses: actions/upload-artifact@v4
         with:
           name: workspace
           path: |
-            .
-            !node_modules
-          retention-days: 1
-
-      - name: Upload node_modules
-        uses: actions/upload-artifact@v4
-        with:
-          name: node_modules
-          path: node_modules
+            src/
+            tests/
+            scripts/
+            public/
+            build.js
+            package.json
+            package-lock.json
+            playwright.config.js
           retention-days: 1
 
   # ------------------------------------------------------------------
@@ -87,10 +86,14 @@ jobs:
         with:
           name: workspace
 
-      - uses: actions/download-artifact@v4
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
         with:
-          name: node_modules
-          path: node_modules
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+
+      - run: npm ci  # Fast with cache (~2s)
 
       - name: Run E2E tests
         run: npm run test:e2e
@@ -126,10 +129,14 @@ jobs:
         with:
           name: workspace
 
-      - uses: actions/download-artifact@v4
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
         with:
-          name: node_modules
-          path: node_modules
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+
+      - run: npm ci
 
       - name: Install ffmpeg
         run: apt-get update && apt-get install -y ffmpeg

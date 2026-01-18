@@ -49,14 +49,33 @@ jobs:
       - name: Audit dependencies
         run: npm audit --audit-level=moderate --production || true
 
+      - name: Install ffmpeg (for screenshots)
+        run: apt-get update && apt-get install -y ffmpeg
+
       - name: Run unit tests
         run: npm run test:unit
 
       - name: Build debug (includes test hooks)
         run: npm run build:debug
 
-      - name: Run E2E tests
-        run: npm run test:e2e
+      - name: Run E2E tests and generate screenshots (parallel)
+        run: |
+          npm run test:e2e &
+          PID_E2E=$!
+          npm run screenshots &
+          PID_SCREENSHOTS=$!
+
+          # Wait for both and capture exit codes
+          wait $PID_E2E
+          E2E_EXIT=$?
+          wait $PID_SCREENSHOTS
+          SCREENSHOTS_EXIT=$?
+
+          # Fail if either failed
+          if [ $E2E_EXIT -ne 0 ] || [ $SCREENSHOTS_EXIT -ne 0 ]; then
+            echo "E2E exit: $E2E_EXIT, Screenshots exit: $SCREENSHOTS_EXIT"
+            exit 1
+          fi
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -72,44 +91,14 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: public
-          path: public/
-          retention-days: 1
-
-  screenshots:
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.57.0-jammy
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-
-
-      - run: npm ci
-
-      - name: Install ffmpeg
-        run: apt-get update && apt-get install -y ffmpeg
-
-      - name: Build debug
-        run: npm run build:debug
-
-      - name: Generate screenshots
-        run: npm run screenshots
-
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: screenshots/
+          name: build-output
+          path: |
+            public/
+            screenshots/
           retention-days: 1
 
   deploy:
-    needs: [test, screenshots]
+    needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -121,13 +110,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: public
-          path: public/
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: screenshots
-          path: screenshots/
+          name: build-output
 
       - name: Deploy to release branch
         run: |

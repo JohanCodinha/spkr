@@ -14,6 +14,7 @@ export function cacheElements() {
         lobbyColorInput: document.getElementById('lobby-color-input'),
         lobbyColorPreview: document.getElementById('lobby-color-preview'),
         lobbyNameInput: document.getElementById('lobby-name-input'),
+        lobbyObserverInput: document.getElementById('lobby-observer-input'),
         roomCodeInput: document.getElementById('room-code-input'),
         lobbyStatus: document.getElementById('lobby-status'),
         lobbyStatusText: document.getElementById('lobby-status-text'),
@@ -72,7 +73,8 @@ export function updateIdentity(key, value) {
     mp.broadcastPlayerInfo({
         name: localPlayer.name,
         color: localPlayer.color,
-        voted: localPlayer.voted
+        voted: localPlayer.voted,
+        isObserver: localPlayer.isObserver
     });
 
     renderHeader();
@@ -91,8 +93,10 @@ export function renderHeader() {
         const pill = document.createElement('div');
         pill.className = 'avatar-pill';
         pill.style.backgroundColor = p.color;
-        pill.style.opacity = p.voted ? '1' : '0.4';
-        pill.setAttribute('aria-label', `${p.name}: ${p.voted ? 'voted' : 'waiting'}`);
+        // Observers always shown at full opacity, voters depend on vote status
+        pill.style.opacity = p.isObserver ? '1' : (p.voted ? '1' : '0.4');
+        const status = p.isObserver ? 'observer' : (p.voted ? 'voted' : 'waiting');
+        pill.setAttribute('aria-label', `${p.name}: ${status}`);
 
         const initials = document.createElement('div');
         initials.className = 'avatar-initials';
@@ -110,6 +114,16 @@ export function renderHeader() {
         pill.appendChild(initials);
         pill.appendChild(nameContainer);
         wrapper.appendChild(pill);
+
+        // Add observer badge if player is an observer
+        if (p.isObserver) {
+            const badge = document.createElement('div');
+            badge.className = 'avatar-observer-badge';
+            badge.innerHTML = '&#128065;'; // Eye emoji
+            badge.setAttribute('aria-label', 'Observer');
+            wrapper.appendChild(badge);
+        }
+
         elements.avatarContainer.appendChild(wrapper);
     });
 }

@@ -62,6 +62,7 @@ export function createRoom() {
         const inputName = elements.lobbyNameInput.value.trim();
         localPlayer.name = inputName || elements.lobbyNameInput.placeholder;
         localPlayer.color = elements.lobbyColorInput.value;
+        localPlayer.isObserver = elements.lobbyObserverInput.checked;
 
         // Save to localStorage
         saveIdentityToStorage(localPlayer.name, localPlayer.color);
@@ -79,7 +80,8 @@ export function createRoom() {
         mp.broadcastPlayerInfo({
             name: localPlayer.name,
             color: localPlayer.color,
-            voted: false
+            voted: false,
+            isObserver: localPlayer.isObserver
         });
 
         emit('roomCreated', { code });
@@ -104,6 +106,7 @@ export function joinRoom() {
         const inputName = elements.lobbyNameInput.value.trim();
         localPlayer.name = inputName || elements.lobbyNameInput.placeholder;
         localPlayer.color = elements.lobbyColorInput.value;
+        localPlayer.isObserver = elements.lobbyObserverInput.checked;
 
         // Save to localStorage
         saveIdentityToStorage(localPlayer.name, localPlayer.color);
@@ -121,7 +124,8 @@ export function joinRoom() {
         mp.broadcastPlayerInfo({
             name: localPlayer.name,
             color: localPlayer.color,
-            voted: false
+            voted: false,
+            isObserver: localPlayer.isObserver
         });
 
         emit('roomJoined', { code: normalizedCode });

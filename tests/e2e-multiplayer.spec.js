@@ -15,9 +15,10 @@ const URL = `http://localhost:${PORT}`;
 
 // Test configuration
 const PLAYERS = [
-  { name: 'Alice', color: '#8b5cf6' },
-  { name: 'Bob', color: '#3b82f6' },
-  { name: 'Charlie', color: '#10b981' },
+  { name: 'Alice', color: '#8b5cf6', isObserver: false },
+  { name: 'Bob', color: '#3b82f6', isObserver: false },
+  { name: 'Charlie', color: '#10b981', isObserver: false },
+  { name: 'Diana', color: '#f59e0b', isObserver: true },
 ];
 
 const VOTES = {
@@ -106,16 +107,15 @@ test.afterAll(async () => {
 });
 
 test.describe('Multiplayer Scrum Poker', () => {
-  test('full game flow with 3 players', async ({ browser }) => {
-    // Create 3 browser contexts (simulating 3 different users)
-    const contexts = await Promise.all([
-      browser.newContext({ viewport: { width: 1280, height: 720 } }),
-      browser.newContext({ viewport: { width: 1280, height: 720 } }),
-      browser.newContext({ viewport: { width: 1280, height: 720 } }),
-    ]);
+  test('full game flow with 3 players and 1 observer', async ({ browser }) => {
+    // Create 4 browser contexts (simulating 4 different users, 1 is observer)
+    const contexts = await Promise.all(
+      PLAYERS.map(() => browser.newContext({ viewport: { width: 1280, height: 720 } }))
+    );
 
     const pages = await Promise.all(contexts.map(ctx => ctx.newPage()));
-    const [page1, page2, page3] = pages;
+    const [page1, page2, page3, page4] = pages;
+    const voterPages = [page1, page2, page3]; // Pages that can vote
 
     try {
       // =====================================================================
@@ -154,7 +154,7 @@ test.describe('Multiplayer Scrum Poker', () => {
       // =====================================================================
       // PHASE 3: Other players join
       // =====================================================================
-      await test.step('Players 2 and 3 join room', async () => {
+      await test.step('Players 2, 3, and 4 (observer) join room', async () => {
         // Player 2 joins
         await page2.fill('#lobby-name-input', PLAYERS[1].name);
         await page2.evaluate((color) => {
@@ -173,6 +173,19 @@ test.describe('Multiplayer Scrum Poker', () => {
         await page3.click('#join-room-btn');
         await expect(page3.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
 
+        // Player 4 joins as observer
+        await page4.fill('#lobby-name-input', PLAYERS[3].name);
+        await page4.evaluate((color) => {
+          document.querySelector('#lobby-color-input').value = color;
+        }, PLAYERS[3].color);
+        await page4.check('#lobby-observer-input'); // Check observer checkbox
+        await page4.fill('#room-code-input', roomCode);
+        await page4.click('#join-room-btn');
+        await expect(page4.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+        // Verify observer's deck is hidden
+        await expect(page4.locator('.card-deck')).toHaveClass(/hidden/);
+
         // Wait for P2P mesh to form
         await page1.waitForTimeout(3000);
       });
@@ -180,22 +193,23 @@ test.describe('Multiplayer Scrum Poker', () => {
       // =====================================================================
       // PHASE 4: Round 1 - Voting
       // =====================================================================
-      await test.step('Round 1: all players vote', async () => {
-        for (let i = 0; i < pages.length; i++) {
+      await test.step('Round 1: all voters vote (observer watches)', async () => {
+        for (let i = 0; i < voterPages.length; i++) {
           const vote = VOTES.round1[i];
-          await pages[i].click(`.deck-card:has-text("${vote}")`);
-          await pages[i].waitForTimeout(500);
+          await voterPages[i].click(`.deck-card:has-text("${vote}")`);
+          await voterPages[i].waitForTimeout(500);
         }
 
         await waitForCardsSettled(page1);
       });
 
       // =====================================================================
-      // PHASE 5: Round 1 - Reveal
+      // PHASE 5: Round 1 - Reveal (observer triggers)
       // =====================================================================
-      await test.step('Round 1: reveal cards', async () => {
-        await expect(page1.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
-        await page1.click('#reveal-btn');
+      await test.step('Round 1: observer reveals cards', async () => {
+        // Observer can see and click reveal button
+        await expect(page4.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
+        await page4.click('#reveal-btn');
         await waitForRevealComplete(page1);
       });
 
@@ -217,10 +231,10 @@ test.describe('Multiplayer Scrum Poker', () => {
       // PHASE 7: Round 2 - Consensus vote
       // =====================================================================
       await test.step('Round 2: consensus vote', async () => {
-        for (let i = 0; i < pages.length; i++) {
+        for (let i = 0; i < voterPages.length; i++) {
           const vote = VOTES.round2[i];
-          await pages[i].click(`.deck-card:has-text("${vote}")`);
-          await pages[i].waitForTimeout(500);
+          await voterPages[i].click(`.deck-card:has-text("${vote}")`);
+          await voterPages[i].waitForTimeout(500);
         }
 
         await waitForCardsSettled(page1);

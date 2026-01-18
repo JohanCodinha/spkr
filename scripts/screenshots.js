@@ -16,6 +16,7 @@ const PLAYERS = [
   { name: 'Charlie', color: '#10b981', vote: '5' },
   { name: 'Diana', color: '#f59e0b', vote: '8' },
   { name: 'Eve', color: '#ec4899', vote: '5' },
+  { name: 'Frank', color: '#64748b', vote: null, isObserver: true },
 ];
 
 // Start a simple HTTP server
@@ -127,9 +128,10 @@ async function main() {
     for (let i = 1; i < PLAYERS.length; i++) {
       const player = PLAYERS[i];
       await gamePage.evaluate(({ p, idx }) => {
-        window.__SPKR_MOCK__.addPlayer(`mock-${idx}`, p.name, p.color, p.vote);
+        window.__SPKR_MOCK__.addPlayer(`mock-${idx}`, p.name, p.color, p.vote, p.isObserver || false);
       }, { p: player, idx: i });
-      console.log(`✅ Added ${player.name} with vote ${player.vote}`);
+      const role = player.isObserver ? '(observer)' : `with vote ${player.vote}`;
+      console.log(`✅ Added ${player.name} ${role}`);
       await gamePage.waitForTimeout(600); // Time between cards for animation
     }
 

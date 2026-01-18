@@ -183,6 +183,12 @@ function startGame() {
     updatePeerCount(players.size);
 
     buildDeck();
+
+    // Hide deck for observers
+    if (localPlayer.isObserver) {
+        elements.deck.classList.add('hidden');
+    }
+
     renderHeader();
 }
 
@@ -265,7 +271,8 @@ function setupMultiplayerHandlers() {
         mp.broadcastPlayerInfo({
             name: localPlayer.name,
             color: localPlayer.color,
-            voted: localPlayer.voted
+            voted: localPlayer.voted,
+            isObserver: localPlayer.isObserver
         });
 
         // If we have voted, re-broadcast so new peer sees our card
@@ -306,6 +313,7 @@ function setupMultiplayerHandlers() {
             name: data.name,
             color: data.color,
             voted: data.voted || (existingPlayer?.voted ?? false),
+            isObserver: data.isObserver || false,
             pos: existingPlayer?.pos || { x: 0.5, y: 0.5 }
         });
 
@@ -401,7 +409,7 @@ function updatePlayerPositions() {
 // =============================================================================
 
 function userVote(val) {
-    if (localPlayer.voted) return;
+    if (localPlayer.voted || localPlayer.isObserver) return;
 
     localPlayer.voted = true;
     localPlayer.vote = val;
@@ -423,14 +431,20 @@ function userVote(val) {
 
 function checkState() {
     const allPlayers = getAllPlayers();
-    const votedCount = allPlayers.filter(p => p.voted).length;
-    const totalPlayers = allPlayers.length;
+    const voters = allPlayers.filter(p => !p.isObserver);
+    const votedCount = voters.filter(p => p.voted).length;
+    const totalVoters = voters.length;
 
-    // Show reveal button only if everyone has voted
-    if (votedCount === totalPlayers && totalPlayers > 0 && votedCount > 0) {
+    // Show reveal button if all voters have voted, or if local player is observer and votes exist
+    const allVotersVoted = votedCount === totalVoters && totalVoters > 0;
+    const observerCanReveal = localPlayer.isObserver && cards.length > 0;
+
+    if (allVotersVoted || observerCanReveal) {
         elements.revealBtn.classList.remove('hidden');
         elements.revealBtn.classList.add('scale-in');
-        emit('allVotesIn', { count: votedCount });
+        if (allVotersVoted) {
+            emit('allVotesIn', { count: votedCount });
+        }
     }
 }
 
@@ -499,6 +513,10 @@ function resetGameState() {
     }
     if (elements.deck) {
         elements.deck.classList.remove('voted', 'revealed');
+        // Keep deck hidden for observers
+        if (localPlayer.isObserver) {
+            elements.deck.classList.add('hidden');
+        }
     }
 }
 
@@ -599,10 +617,11 @@ function updateLogic() {
 if (__DEBUG__) {
     window.__SPKR_MOCK__ = {
         // Start game without P2P (for mock mode)
-        startGame(name, color) {
+        startGame(name, color, isObserver = false) {
             localPlayer.name = name;
             localPlayer.color = color;
             localPlayer.id = 'local-mock';
+            localPlayer.isObserver = isObserver;
             elements.colorInput.value = color;
             elements.colorPreview.style.backgroundColor = color;
             elements.nameInput.value = name;
@@ -611,18 +630,23 @@ if (__DEBUG__) {
             hideLobbyStatus();
             setAdvertising();
             buildDeck();
+            if (isObserver) {
+                elements.deck.classList.add('hidden');
+            }
             renderHeader();
         },
         // Local player votes
         vote(value) {
             userVote(value);
         },
-        // Add a fake remote player and spawn their card
-        addPlayer(id, name, color, vote) {
+        // Add a fake remote player and optionally spawn their card
+        addPlayer(id, name, color, vote, isObserver = false) {
             const pos = getPlayerPositions(players.size + 1)[players.size];
-            const player = { id, name, color, voted: true, vote, pos };
+            const player = { id, name, color, voted: !isObserver, vote: isObserver ? null : vote, isObserver, pos };
             players.set(id, player);
-            spawnCard(player, vote);
+            if (!isObserver) {
+                spawnCard(player, vote);
+            }
             updatePeerCount(players.size);
             renderHeader();
             checkState();

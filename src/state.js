@@ -19,7 +19,8 @@ export let localPlayer = {
     name: 'You',
     color: '#3b82f6',
     voted: false,
-    vote: null
+    vote: null,
+    isObserver: false
 };
 
 // DOM Elements cache

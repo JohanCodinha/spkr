@@ -29,10 +29,8 @@ permissions:
   contents: read
 
 jobs:
-  # ------------------------------------------------------------------
-  # JOB 1: Setup - unit tests + build debug, upload built workspace
-  # ------------------------------------------------------------------
-  setup:
+  # Runs in parallel with screenshots
+  test:
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
@@ -54,46 +52,8 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
 
-      - name: Build debug (includes test hooks)
+      - name: Build debug
         run: npm run build:debug
-
-      # Upload only source + built files (not node_modules)
-      - name: Upload workspace
-        uses: actions/upload-artifact@v4
-        with:
-          name: workspace
-          path: |
-            src/
-            tests/
-            scripts/
-            public/
-            build.js
-            package.json
-            package-lock.json
-            playwright.config.js
-          retention-days: 1
-
-  # ------------------------------------------------------------------
-  # JOB 2: E2E Tests (parallel with screenshots)
-  # ------------------------------------------------------------------
-  e2e-tests:
-    needs: setup
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.57.0-jammy
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: workspace
-
-      - name: Cache npm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-
-
-      - run: npm ci  # Fast with cache (~2s)
 
       - name: Run E2E tests
         run: npm run test:e2e
@@ -116,18 +76,13 @@ jobs:
           path: public/
           retention-days: 1
 
-  # ------------------------------------------------------------------
-  # JOB 3: Screenshots (parallel with E2E)
-  # ------------------------------------------------------------------
+  # Runs in parallel with test
   screenshots:
-    needs: setup
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: workspace
+      - uses: actions/checkout@v4
 
       - name: Cache npm dependencies
         uses: actions/cache@v4
@@ -141,6 +96,9 @@ jobs:
       - name: Install ffmpeg
         run: apt-get update && apt-get install -y ffmpeg
 
+      - name: Build debug
+        run: npm run build:debug
+
       - name: Generate screenshots
         run: npm run screenshots
 
@@ -151,11 +109,8 @@ jobs:
           path: screenshots/
           retention-days: 1
 
-  # ------------------------------------------------------------------
-  # JOB 4: Deploy (waits for both parallel jobs)
-  # ------------------------------------------------------------------
   deploy:
-    needs: [e2e-tests, screenshots]
+    needs: [test, screenshots]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

@@ -2,6 +2,10 @@ node_modules/
 *.webm
 preview.html
 
+# Build artifacts (deployed via release branch)
+public/
+screenshots/
+
 # Playwright
 playwright-report/
 test-results/

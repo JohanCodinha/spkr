@@ -92,22 +92,42 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to check if release branch exists
 
       - uses: actions/download-artifact@v4
         with:
           name: build-output
 
-      - name: Commit build output and screenshots if changed
+      - name: Deploy to release branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Save artifacts outside git tree
           rm -f screenshots/*.webm
-          git add public/ screenshots/
-          if ! git diff --staged --quiet; then
-            git commit -m "Build: update public/index.html and screenshots"
-            git push
+          cp -r public /tmp/public
+          cp -r screenshots /tmp/screenshots
+
+          # Switch to release branch (orphan if doesn't exist)
+          if git show-ref --verify --quiet refs/remotes/origin/release; then
+            git checkout release
           else
-            echo "No changes to commit"
+            git checkout --orphan release
+            git rm -rf .
+          fi
+
+          # Copy artifacts and commit
+          rm -rf public screenshots
+          cp -r /tmp/public public
+          cp -r /tmp/screenshots screenshots
+          git add public/ screenshots/
+
+          if ! git diff --staged --quiet; then
+            git commit -m "Build from main@${GITHUB_SHA::7}"
+            git push origin release
+          else
+            echo "No changes to deploy"
           fi
 
       - name: Trigger parent deploy

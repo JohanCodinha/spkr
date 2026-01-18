@@ -21,7 +21,6 @@ on:
       - 'playwright.config.js'
   workflow_dispatch:
 
-# Prevent duplicate runs, cancel in-progress runs on new push
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -30,7 +29,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # ------------------------------------------------------------------
+  # JOB 1: Setup - shared prep work, cached
+  # ------------------------------------------------------------------
+  setup:
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
@@ -49,33 +51,49 @@ jobs:
       - name: Audit dependencies
         run: npm audit --audit-level=moderate --production || true
 
-      - name: Install ffmpeg (for screenshots)
-        run: apt-get update && apt-get install -y ffmpeg
-
       - name: Run unit tests
         run: npm run test:unit
 
       - name: Build debug (includes test hooks)
         run: npm run build:debug
 
-      - name: Run E2E tests and generate screenshots (parallel)
-        run: |
-          npm run test:e2e &
-          PID_E2E=$!
-          npm run screenshots &
-          PID_SCREENSHOTS=$!
+      # Upload workspace for parallel jobs
+      - name: Upload workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace
+          path: |
+            .
+            !node_modules
+          retention-days: 1
 
-          # Wait for both and capture exit codes
-          wait $PID_E2E
-          E2E_EXIT=$?
-          wait $PID_SCREENSHOTS
-          SCREENSHOTS_EXIT=$?
+      - name: Upload node_modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: node_modules
+          path: node_modules
+          retention-days: 1
 
-          # Fail if either failed
-          if [ $E2E_EXIT -ne 0 ] || [ $SCREENSHOTS_EXIT -ne 0 ]; then
-            echo "E2E exit: $E2E_EXIT, Screenshots exit: $SCREENSHOTS_EXIT"
-            exit 1
-          fi
+  # ------------------------------------------------------------------
+  # JOB 2: E2E Tests (parallel with screenshots)
+  # ------------------------------------------------------------------
+  e2e-tests:
+    needs: setup
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.57.0-jammy
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: workspace
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: node_modules
+          path: node_modules
+
+      - name: Run E2E tests
+        run: npm run test:e2e
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -85,20 +103,52 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-      - name: Build production (strips debug code)
+      - name: Build production
         run: npm run build
 
-      - name: Upload build artifacts
+      - name: Upload public
         uses: actions/upload-artifact@v4
         with:
-          name: build-output
-          path: |
-            public/
-            screenshots/
+          name: public
+          path: public/
           retention-days: 1
 
+  # ------------------------------------------------------------------
+  # JOB 3: Screenshots (parallel with E2E)
+  # ------------------------------------------------------------------
+  screenshots:
+    needs: setup
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.57.0-jammy
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: workspace
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: node_modules
+          path: node_modules
+
+      - name: Install ffmpeg
+        run: apt-get update && apt-get install -y ffmpeg
+
+      - name: Generate screenshots
+        run: npm run screenshots
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/
+          retention-days: 1
+
+  # ------------------------------------------------------------------
+  # JOB 4: Deploy (waits for both parallel jobs)
+  # ------------------------------------------------------------------
   deploy:
-    needs: test
+    needs: [e2e-tests, screenshots]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -106,23 +156,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Need full history to check if release branch exists
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
-          name: build-output
+          name: public
+          path: public/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/
 
       - name: Deploy to release branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Save artifacts outside git tree
           rm -f screenshots/*.webm
           cp -r public /tmp/public
           cp -r screenshots /tmp/screenshots
 
-          # Switch to release branch (orphan if doesn't exist)
           if git show-ref --verify --quiet refs/remotes/origin/release; then
             git checkout release
           else
@@ -130,7 +184,6 @@ jobs:
             git rm -rf .
           fi
 
-          # Copy artifacts and commit
           rm -rf public screenshots
           cp -r /tmp/public public
           cp -r /tmp/screenshots screenshots

@@ -9,6 +9,7 @@
     "test": "npm run test:unit && npm run build:debug && npm run test:e2e",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:e2e": "npx playwright test",
+    "test:e2e:update-snapshots": "docker run --rm -v \"$(pwd)\":/work -w /work mcr.microsoft.com/playwright:v1.57.0-jammy bash -c 'npm ci && npm run build:debug && npx playwright test --update-snapshots'",
     "test:headed": "npm run build:debug && npx playwright test --headed",
     "test:report": "npx playwright show-report"
   },

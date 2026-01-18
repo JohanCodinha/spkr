@@ -95,6 +95,18 @@ npm run screenshots
 
 The build outputs a self-contained `public/index.html` with all JavaScript, CSS, and assets inlined.
 
+## Releasing
+
+1. Update `RELEASE_NOTES.md` with user-focused changelog
+2. Commit and push to main
+3. Create and push a tag: `git tag v1.2.3 && git push --tags`
+
+The release workflow will:
+- Run tests and build
+- Generate fresh screenshots
+- Create a GitHub Release with all assets
+- Trigger deployment to tools.joadn.com
+
 ## License
 
 MIT

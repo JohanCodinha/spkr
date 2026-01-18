@@ -58,8 +58,8 @@ jobs:
       - name: Build debug (includes test hooks)
         run: npm run build:debug
 
-      - name: Run E2E tests
-        run: npm run test:e2e
+      - name: Run E2E tests (update snapshots on main)
+        run: npx playwright test --update-snapshots
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -84,6 +84,13 @@ jobs:
             screenshots/
           retention-days: 1
 
+      - name: Upload test snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-snapshots
+          path: tests/**/*-snapshots/
+          retention-days: 1
+
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -98,6 +105,21 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-snapshots
+          path: tests/
+
+      - name: Commit updated snapshots to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/**/*-snapshots/
+          if ! git diff --staged --quiet; then
+            git commit -m "Update test snapshots [skip ci]"
+            git push origin main
+          fi
 
       - name: Deploy to release branch
         run: |

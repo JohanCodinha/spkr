@@ -43,6 +43,10 @@ import {
     reset as resetConnectionStatus
 } from './connection-status.js';
 import { emit, initDebugTools, resetDummyPlayers } from './debug.js';
+import { registerCardHandLogo } from './card-hand-logo.js';
+
+// Register web components
+registerCardHandLogo();
 
 // =============================================================================
 // LOCAL HELPERS

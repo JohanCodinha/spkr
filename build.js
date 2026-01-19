@@ -33,18 +33,12 @@ async function build() {
   const stylesCSS = readFileSync(join(srcDir, 'styles.css'), 'utf-8');
   const css = (await esbuild.transform(fontsCSS + stylesCSS, { loader: 'css', minify: true })).code;
 
-  // Read SVG for inlining
-  const svg = readFileSync(join(srcDir, 'logo.svg'), 'utf-8');
-
   // Build HTML using cheerio for robust DOM manipulation
   const $ = load(readFileSync(join(srcDir, 'index.html'), 'utf-8'));
 
   // Inline CSS (fonts.css + styles.css combined)
   $('link[href="fonts.css"]').remove();
   $('link[href="styles.css"]').replaceWith(`<style>${css}</style>`);
-
-  // Inline SVG directly
-  $('img[src="logo.svg"]').replaceWith(svg);
 
   // Inline JS - find the entry script comment and replace with script tag
   $('body').append(`<script type="module">${js}</script>`);

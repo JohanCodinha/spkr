@@ -617,10 +617,11 @@ input[type=range]::-moz-range-track {
 }
 
 .lobby-logo {
-    width: 10rem;
+    width: 12rem;
     height: 10rem;
     margin-bottom: 0.75rem;
-    border-radius: 1.5rem;
+    /* Allow card hover effects to overflow */
+    overflow: visible;
 }
 
 .lobby-title {

@@ -42,7 +42,7 @@ import {
     updatePeerCount,
     reset as resetConnectionStatus
 } from './connection-status.js';
-import { emit } from './debug.js';
+import { emit, initDebugTools, resetDummyPlayers } from './debug.js';
 
 // =============================================================================
 // LOCAL HELPERS
@@ -190,6 +190,18 @@ function startGame() {
     }
 
     renderHeader();
+
+    // Initialize debug tools (only in debug builds)
+    initDebugTools(spawnCardForDummy);
+}
+
+// Callback for debug tools to spawn cards for dummy players
+function spawnCardForDummy(value, playerId) {
+    const player = players.get(playerId);
+    if (player && !cards.some(c => c.player.id === playerId)) {
+        spawnCard(player, value);
+        checkState();
+    }
 }
 
 function resize() {
@@ -487,6 +499,7 @@ function resetGame() {
 
 function doReset() {
     resetGameState();
+    resetDummyPlayers();
     renderHeader();
 }
 

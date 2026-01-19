@@ -111,6 +111,7 @@ hr {
 .header {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
+    gap: 0.5rem;
     align-items: flex-start;
     pointer-events: auto;
 }
@@ -126,22 +127,53 @@ hr {
     border-radius: 9999px;
     display: flex;
     align-items: center;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .avatar-container {
     display: flex;
+    gap: 0.25rem;
     padding-left: 0.25rem;
     padding-right: 0.25rem;
-}
-
-.avatar-container > *:not(:first-child) {
-    margin-left: -0.5rem;
+    min-width: 0;
+    overflow: visible;
 }
 
 /* Avatar Items (injected via JS) */
 .avatar-item {
     position: relative;
-    transition: all 0.3s ease-out;
+    min-width: 0;
+    flex: 0 0 auto;
+    animation: avatar-enter 0.3s ease-out;
+}
+
+@keyframes avatar-enter {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes avatar-exit {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+.avatar-item.exiting {
+    animation: avatar-exit 0.25s ease-out forwards;
+    pointer-events: none;
 }
 
 .avatar-item:hover {
@@ -154,13 +186,24 @@ hr {
     height: 2rem;
     border-radius: 9999px;
     border: 2px solid white;
-    transition: all 0.3s ease-out;
     cursor: default;
     overflow: hidden;
 }
 
-.avatar-initials {
-    width: 2rem;
+/* Name element */
+.avatar-name {
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+/* Initial element - always present but hidden via width */
+.avatar-initial {
+    width: 0;
     height: 2rem;
     display: flex;
     align-items: center;
@@ -168,34 +211,53 @@ hr {
     font-size: 0.75rem;
     font-weight: 900;
     color: white;
-    flex-shrink: 0;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
-}
-
-.avatar-name-container {
-    max-width: 0;
-    transition: all 0.3s ease-out;
     overflow: hidden;
-}
-
-.avatar-item:hover .avatar-name-container {
-    max-width: 150px;
-}
-
-.avatar-name {
-    padding-right: 0.75rem;
-    padding-left: 0.25rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: white;
-    white-space: nowrap;
     opacity: 0;
-    transition: opacity 0.3s ease-out 75ms;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+/* =============================================================================
+   COMPACT MODE - Container-level class, all pills show initials only
+   ============================================================================= */
+
+.avatar-container.compact .avatar-pill {
+    width: 2rem;
+    transition: width 0.25s ease-out;
+}
+
+.avatar-container.compact .avatar-name {
+    width: 0;
+    padding: 0;
+    opacity: 0;
+    transition: width 0.25s ease-out, padding 0.25s ease-out, opacity 0.15s ease-out;
+}
+
+.avatar-container.compact .avatar-initial {
+    width: 2rem;
+    opacity: 1;
+    transition: width 0.25s ease-out, opacity 0.15s ease-out 0.1s;
+}
+
+/* =============================================================================
+   HOVER - Always expand to show full name
+   ============================================================================= */
+
+.avatar-item:hover .avatar-pill {
+    width: auto;
+    transition: none;
 }
 
 .avatar-item:hover .avatar-name {
+    width: auto;
+    padding: 0 0.75rem;
     opacity: 1;
+    transition: none;
+}
+
+.avatar-item:hover .avatar-initial {
+    width: 0;
+    opacity: 0;
+    transition: none;
 }
 
 .avatar-observer-badge {
@@ -312,6 +374,51 @@ hr {
     display: flex;
     flex-direction: column;
     gap: 1rem;
+}
+
+.settings-subtitle {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.75rem 0;
+}
+
+.debug-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.debug-btn {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: #e2e8f0;
+    color: #334155;
+    transition: all 0.15s;
+}
+
+.debug-btn:hover {
+    background: #cbd5e1;
+}
+
+.debug-btn-danger {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.debug-btn-danger:hover {
+    background: #fecaca;
+}
+
+.dummy-count {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.5rem;
+    text-align: center;
 }
 
 .slider-group {
@@ -929,8 +1036,6 @@ input[type=range]::-moz-range-track {
     }
 
     .avatar-pill,
-    .avatar-name-container,
-    .avatar-name,
     .card-deck,
     .settings-panel,
     .beacon-dot {

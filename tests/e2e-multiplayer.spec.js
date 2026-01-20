@@ -249,7 +249,7 @@ test.describe('Multiplayer Scrum Poker', () => {
         await waitForRevealComplete(page1);
 
         // Verify final state
-        const state = await page1.evaluate(() => window.__SPKR_MOCK__?.getState?.());
+        const state = await page1.evaluate(() => window.__SPKR_MOCK__?.getMockState?.());
         expect(state.isRevealed).toBe(true);
         expect(state.cards).toBe(3);
       });

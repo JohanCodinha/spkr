@@ -14,7 +14,8 @@ import {
     STORAGE_KEY_NAME,
     STORAGE_KEY_COLOR
 } from './constants.js';
-import { getState } from './store.js';
+import { getState, subscribe } from './store.js';
+import { shallow } from 'zustand/vanilla/shallow';
 import { getCardSize, getDisplayName, renderCardFront, renderCardBack } from './drawing.js';
 import { initEngine, clearEngine, spawnCard, setCardStatic, setCardPosition, setCardAngle, updateEngine } from './physics.js';
 import { drawTable, drawCards, drawResetButton, drawParticles, spawnConfetti } from './drawing.js';
@@ -113,6 +114,13 @@ function init() {
 
     // Set callback for lobby to start game
     setStartGameCallback(startGame);
+
+    // Subscribe to player state changes to auto-render header
+    subscribe(
+        (state) => ({ players: state.players, localPlayer: state.localPlayer }),
+        () => renderHeader(),
+        { equalityFn: shallow }
+    );
 
     // Start render loop
     resize();
@@ -322,7 +330,6 @@ function setupMultiplayerHandlers() {
         // Update connection status
         updatePeerCount(Object.keys(getState().players).length);
 
-        renderHeader();
         checkState();
     });
 
@@ -348,7 +355,6 @@ function setupMultiplayerHandlers() {
         }
 
         updatePlayerPositions();
-        renderHeader();
     });
 
     mp.onVoteReceived((data, peerId) => {
@@ -385,7 +391,6 @@ function setupMultiplayerHandlers() {
                 positionCardsForReveal();
             }
 
-            renderHeader();
             checkState();
         }
     });
@@ -457,7 +462,6 @@ function userVote(val) {
 
     elements.deck.classList.add('voted');
     checkState();
-    renderHeader();
 }
 
 function checkState() {
@@ -522,7 +526,6 @@ function resetGame() {
 function doReset() {
     resetGameState();
     resetDummyPlayers();
-    renderHeader();
 }
 
 function resetGameState() {
@@ -691,7 +694,6 @@ if (__DEBUG__) {
                 spawnCard(player, vote);
             }
             updatePeerCount(Object.keys(getState().players).length);
-            renderHeader();
             checkState();
         },
         // Trigger reveal

@@ -2,7 +2,6 @@
 // Stripped from production builds via __DEBUG__ flag (set by esbuild)
 
 import { getState } from './store.js';
-import { renderHeader } from './ui.js';
 
 export function emit(event, detail = {}) {
   if (__DEBUG__) {
@@ -113,8 +112,6 @@ function scheduleRandomVote(dummyId) {
 
             // Create card for this dummy player
             castVoteFn(vote, dummyId);
-
-            renderHeader();
         }
     }, delay);
 }
@@ -149,7 +146,6 @@ export function addDummyPlayer() {
     // Random chance to auto-vote after a delay
     scheduleRandomVote(id);
 
-    renderHeader();
     updateDummyCount();
 
     return dummy;
@@ -162,7 +158,6 @@ export function clearDummyPlayers() {
     });
     dummyPlayers.clear();
 
-    renderHeader();
     updateDummyCount();
 }
 

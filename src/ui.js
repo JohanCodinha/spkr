@@ -85,8 +85,6 @@ export function updateIdentity(key, value) {
         voted: updatedLocalPlayer.voted,
         isObserver: updatedLocalPlayer.isObserver
     });
-
-    renderHeader();
 }
 
 // Track rendered players for enter/exit animations

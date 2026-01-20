@@ -167,10 +167,18 @@ export function checkUrlForRoom() {
     const roomCode = params.get('room');
 
     if (roomCode) {
-        // Pre-fill the room code and auto-join
+        // Pre-fill the room code (let user set name and choose join mode)
         elements.roomCodeInput.value = roomCode;
-        // Small delay to ensure everything is initialized
-        setTimeout(() => joinRoom(), 100);
+
+        // Hide the "Create Room" button and divider since we're joining
+        elements.createRoomBtn.classList.add('hidden');
+        const divider = elements.createRoomBtn.nextElementSibling;
+        if (divider && divider.classList.contains('lobby-divider')) {
+            divider.classList.add('hidden');
+        }
+
+        // Focus the name input so user can set their name
+        elements.lobbyNameInput.focus();
 
         // Clean the URL without reloading
         const cleanUrl = new URL(window.location.href);

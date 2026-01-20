@@ -64,3 +64,34 @@ jobs:
           name: playwright-report-${{ github.run_id }}
           path: playwright-report/
           retention-days: 7
+
+      - name: Build production
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npm run build
+
+      - name: Upload public
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public
+          path: public/
+          retention-days: 1
+
+  deploy-beta:
+    needs: [test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: public
+          path: public/
+
+      - name: Deploy to beta.eval.work
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env beta

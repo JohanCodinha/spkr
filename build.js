@@ -8,8 +8,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(__dirname, 'src');
 const publicDir = join(__dirname, 'public');
 
-// Check for debug mode via environment variable
+// Check for build mode via environment variables
 const isDebug = process.env.DEBUG === 'true';
+const isEditor = process.env.EDITOR === 'true';
 
 async function build() {
   mkdirSync(publicDir, { recursive: true });
@@ -23,7 +24,10 @@ async function build() {
     minify: !isDebug,
     format: 'esm',
     external: ['https://esm.sh/*'],
-    define: { '__DEBUG__': isDebug ? 'true' : 'false' },
+    define: {
+      '__DEBUG__': isDebug ? 'true' : 'false',
+      '__EDITOR__': isEditor ? 'true' : 'false'
+    },
     loader: { '.svg': 'text' },
     write: false,
   })).outputFiles[0].text;

@@ -11,10 +11,10 @@ import CARD_GOLD from './cards/card-gold.svg';
 import CARD_BLUE from './cards/card-blue.svg';
 import CARD_GREEN from './cards/card-green.svg';
 
-// Debug editor import - tree-shaken in production via __DEBUG__
+// Editor import - tree-shaken unless __EDITOR__ is true
 // eslint-disable-next-line no-unused-vars
 import * as editorModule from './card-hand-logo-editor.js';
-const renderEditor = __DEBUG__ ? editorModule.renderEditor : null;
+const renderEditor = __EDITOR__ ? editorModule.renderEditor : null;
 
 const CARD_SVGS = [CARD_GOLD, CARD_BLUE, CARD_GREEN];
 
@@ -68,8 +68,8 @@ class CardHandLogo extends HTMLElement {
     }
 
     connectedCallback() {
-        // Initialize debug editor when component is added to DOM
-        if (__DEBUG__ && renderEditor) {
+        // Initialize editor when component is added to DOM (dev mode only)
+        if (__EDITOR__ && renderEditor) {
             renderEditor(this, STATE, CARD_SVGS);
         }
     }

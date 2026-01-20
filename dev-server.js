@@ -32,7 +32,7 @@ function triggerRebuild(changedFile) {
         }
         console.log(`\n📦 Rebuilding (${changedFile} changed)...`);
         buildProcess = spawn('node', ['build.js'], {
-            env: { ...process.env, DEBUG: 'true' },
+            env: { ...process.env, DEBUG: 'true', EDITOR: 'true' },
             stdio: 'inherit'
         });
         buildProcess.on('close', (code) => {
@@ -57,9 +57,9 @@ const MIME_TYPES = {
 };
 
 // Initial build
-console.log('Building in debug mode...');
+console.log('Building in dev mode (debug + editor)...');
 const build = spawn('node', ['build.js'], {
-    env: { ...process.env, DEBUG: 'true' },
+    env: { ...process.env, DEBUG: 'true', EDITOR: 'true' },
     stdio: 'inherit'
 });
 
@@ -108,7 +108,7 @@ function startServer() {
                     // Rebuild
                     console.log('Rebuilding...');
                     const rebuild = spawn('node', ['build.js'], {
-                        env: { ...process.env, DEBUG: 'true' },
+                        env: { ...process.env, DEBUG: 'true', EDITOR: 'true' },
                         stdio: 'inherit'
                     });
 

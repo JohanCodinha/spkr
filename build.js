@@ -48,6 +48,9 @@ async function build() {
   }).remove();
 
   writeFileSync(join(publicDir, 'index.html'), $.html());
+
+  // Note: The logo editor is now self-contained in the component.
+  // No need to copy card-hand-editor.html - it's only kept for standalone use.
 }
 
 build().catch(err => { console.error(err); process.exit(1); });

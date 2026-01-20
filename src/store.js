@@ -54,6 +54,16 @@ export const store = createStore(
             filterCards: (predicate) =>
                 set((state) => ({ cards: state.cards.filter(predicate) })),
 
+            findCardForPlayer: (playerId) => {
+                const state = get();
+                return state.cards.find(c => c.player.id === playerId) || null;
+            },
+
+            removeCardForPlayer: (playerId) =>
+                set((state) => ({
+                    cards: state.cards.filter(c => c.player.id !== playerId)
+                })),
+
             updateCard: (index, updates) =>
                 set((state) => ({
                     cards: state.cards.map((card, i) =>

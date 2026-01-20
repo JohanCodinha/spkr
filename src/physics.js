@@ -99,6 +99,21 @@ export function setCardAngle(card, angle) {
     Body.setAngle(card.body, angle);
 }
 
+export function recallCard(card, targetX, targetY) {
+    // Make card static and set recall target
+    Body.setStatic(card.body, true);
+    card.isRecalling = true;
+    card.recallTargetX = targetX;
+    card.recallTargetY = targetY;
+}
+
+export function removeCardBody(card) {
+    const { engine } = getState();
+    if (engine && card.body) {
+        Composite.remove(engine.world, card.body);
+    }
+}
+
 export function updateEngine() {
     const { engine } = getState();
     if (engine) {

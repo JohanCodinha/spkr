@@ -570,6 +570,12 @@ input[type=range]::-moz-range-track {
     outline-offset: 2px;
 }
 
+.deck-card.selected {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
 /* =============================================================================
    LOBBY SCREEN
    ============================================================================= */

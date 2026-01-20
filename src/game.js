@@ -17,7 +17,7 @@ import {
 import { getState, subscribe } from './store.js';
 import { shallow } from 'zustand/vanilla/shallow';
 import { getCardSize, getDisplayName, renderCardFront, renderCardBack } from './drawing.js';
-import { initEngine, clearEngine, spawnCard, setCardStatic, setCardPosition, setCardAngle, updateEngine } from './physics.js';
+import { initEngine, clearEngine, spawnCard, setCardStatic, setCardPosition, setCardAngle, updateEngine, recallCard, removeCardBody } from './physics.js';
 import { drawTable, drawCards, drawResetButton, drawParticles, spawnConfetti } from './drawing.js';
 import { cacheElements, toggleSettings, updateConfig, updateIdentity, renderHeader } from './ui.js';
 import {
@@ -363,7 +363,7 @@ function setupMultiplayerHandlers() {
 
     mp.onVoteReceived((data, peerId) => {
         console.log('Vote received:', peerId, data);
-        const { players, cards, isRevealed, setPlayer } = getState();
+        const { players, cards, isRevealed, setPlayer, findCardForPlayer, width, height } = getState();
         let player = players[peerId];
 
         // If player doesn't exist yet, create from vote data
@@ -380,23 +380,36 @@ function setupMultiplayerHandlers() {
             updatePeerCount(Object.keys(getState().players).length);
         }
 
-        // Check if card already exists for this player (avoid duplicates)
-        const cardExists = cards.some(c => c.player.id === peerId);
+        if (!player) return;
 
-        // Spawn card if player exists and no card exists yet
-        if (player && !cardExists) {
-            player.voted = true;
-            player.vote = data.value;
-            setPlayer(peerId, player);
+        // Immediately update player state (decoupled from animation)
+        player.voted = true;
+        player.vote = data.value;
+        setPlayer(peerId, player);
+
+        // Check if this player already has a card (vote change)
+        const existingCard = findCardForPlayer(peerId);
+
+        if (existingCard) {
+            // Player is changing their vote - recall existing card, then spawn new
+            if (!existingCard.isRecalling) {
+                const targetX = player.pos.x * width;
+                const targetY = player.pos.y * height;
+                recallCard(existingCard, targetX, targetY);
+            }
+            // Store pending vote for card spawn after recall
+            existingCard.pendingVote = data.value;
+        } else {
+            // New vote - spawn card
             const card = spawnCard(player, data.value);
 
             // If already revealed, position this card immediately
             if (isRevealed && card) {
                 positionCardsForReveal();
             }
-
-            checkState();
         }
+
+        checkState();
     });
 
     mp.onRevealReceived((data, peerId) => {
@@ -445,27 +458,54 @@ function updatePlayerPositions() {
 // GAME ACTIONS
 // =============================================================================
 
+// Track pending card spawn after recall animation
+let pendingLocalCardSpawn = null;
+
 function userVote(val) {
-    const { localPlayer, elements, updateLocalPlayer } = getState();
-    if (localPlayer.voted || localPlayer.isObserver) return;
+    const { localPlayer, isRevealed, findCardForPlayer, updateLocalPlayer, width, height } = getState();
+    if (localPlayer.isObserver) return;
+    if (isRevealed) return; // Can't change vote after reveal
 
+    // Immediately update state and broadcast (decoupled from animation)
     updateLocalPlayer({ voted: true, vote: val });
+    updateDeckSelection(val);
 
-    // Re-read after update
     const updatedLocalPlayer = getState().localPlayer;
 
-    // Spawn card locally
-    spawnCard({ ...updatedLocalPlayer, pos: { x: 0.5, y: 1.1 } }, val);
-
-    // Broadcast to peers
+    // Broadcast to peers immediately
     mp.broadcastVote(val, {
         id: updatedLocalPlayer.id,
         name: updatedLocalPlayer.name,
         color: updatedLocalPlayer.color
     });
 
-    elements.deck.classList.add('voted');
+    // Handle animation: recall existing card if any, then spawn new
+    const existingCard = findCardForPlayer(localPlayer.id);
+    if (existingCard) {
+        // Start recall animation - card goes back to player position
+        if (!existingCard.isRecalling) {
+            recallCard(existingCard, width * 0.5, height * 1.1);
+        }
+        // Queue the new card to spawn after recall completes
+        pendingLocalCardSpawn = val;
+    } else {
+        // No existing card, spawn directly
+        spawnCard({ ...updatedLocalPlayer, pos: { x: 0.5, y: 1.1 } }, val);
+    }
+
     checkState();
+}
+
+function updateDeckSelection(selectedVal) {
+    const { elements } = getState();
+    const cards = elements.deck.querySelectorAll('.deck-card');
+    cards.forEach(card => {
+        if (card.innerText === String(selectedVal)) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
 }
 
 function checkState() {
@@ -530,11 +570,18 @@ function resetGameState() {
     clearEngine();
     resetGame();
 
+    // Clear pending card spawn
+    pendingLocalCardSpawn = null;
+
     if (elements.revealBtn) {
         elements.revealBtn.classList.add('hidden');
     }
     if (elements.deck) {
         elements.deck.classList.remove('voted', 'revealed');
+        // Clear selection from deck cards
+        elements.deck.querySelectorAll('.deck-card.selected').forEach(card => {
+            card.classList.remove('selected');
+        });
         // Keep deck hidden for observers
         if (localPlayer.isObserver) {
             elements.deck.classList.add('hidden');
@@ -567,7 +614,45 @@ function loop() {
 }
 
 function updateLogic() {
-    const { isRevealed, cards, particles, revealComplete, setRevealComplete, setParticles } = getState();
+    const { isRevealed, cards, particles, revealComplete, setRevealComplete, setParticles, removeCardForPlayer, localPlayer } = getState();
+
+    // Handle recalling cards (vote changes)
+    const recallingCards = cards.filter(c => c.isRecalling);
+    for (const card of recallingCards) {
+        const smooth = config.revealSmooth * 1.5; // Slightly faster for recall
+        const cx = card.body.position.x;
+        const cy = card.body.position.y;
+
+        setCardPosition(card,
+            cx + (card.recallTargetX - cx) * smooth,
+            cy + (card.recallTargetY - cy) * smooth
+        );
+
+        // Check if card has reached target (or close enough)
+        const dx = Math.abs(card.body.position.x - card.recallTargetX);
+        const dy = Math.abs(card.body.position.y - card.recallTargetY);
+
+        if (dx < 20 && dy < 20) {
+            // Card reached player, remove it and spawn new card if pending
+            const playerId = card.player.id;
+            const pendingVote = card.pendingVote;
+            const player = card.player;
+
+            removeCardBody(card);
+            removeCardForPlayer(playerId);
+
+            // If this was local player's card and there's a pending spawn, do it
+            if (playerId === localPlayer.id && pendingLocalCardSpawn !== null) {
+                const val = pendingLocalCardSpawn;
+                pendingLocalCardSpawn = null;
+                const updatedLocalPlayer = getState().localPlayer;
+                spawnCard({ ...updatedLocalPlayer, pos: { x: 0.5, y: 1.1 } }, val);
+            } else if (pendingVote !== undefined && player) {
+                // Remote player's recall completed - spawn their new card
+                spawnCard(player, pendingVote);
+            }
+        }
+    }
 
     if (isRevealed) {
         let allSettled = cards.length > 0;

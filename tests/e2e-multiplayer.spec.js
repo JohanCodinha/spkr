@@ -258,4 +258,80 @@ test.describe('Multiplayer Scrum Poker', () => {
       await Promise.all(contexts.map(ctx => ctx.close()));
     }
   });
+
+  test('player can change vote before reveal', async ({ browser }) => {
+    // Create 2 browser contexts (2 players)
+    const contexts = await Promise.all([
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+    ]);
+
+    const [page1, page2] = await Promise.all(contexts.map(ctx => ctx.newPage()));
+
+    try {
+      // Load lobby
+      await Promise.all([page1, page2].map(p => p.goto(URL)));
+      await Promise.all([page1, page2].map(p => setupHooks(p)));
+
+      // Player 1 creates room
+      await page1.fill('#lobby-name-input', 'VoteChanger');
+      await page1.click('#create-room-btn');
+      await page1.waitForFunction(
+        () => window.__SPKR_STATE__?.roomCreated === true,
+        { timeout: 15000 }
+      );
+
+      const roomCode = await page1.evaluate(() => window.__SPKR_STATE__.roomCode);
+
+      // Player 2 joins
+      await page2.fill('#lobby-name-input', 'Watcher');
+      await page2.fill('#room-code-input', roomCode);
+      await page2.click('#join-room-btn');
+      await expect(page2.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+      // Wait for P2P mesh
+      await page1.waitForTimeout(2000);
+
+      // Player 1 votes "5"
+      await page1.click('.deck-card:has-text("5")');
+      await page1.waitForTimeout(500);
+
+      // Verify card "5" is selected in deck
+      await expect(page1.locator('.deck-card:has-text("5")')).toHaveClass(/selected/);
+
+      // Verify deck is still active (can change vote)
+      await expect(page1.locator('.card-deck')).not.toHaveClass(/voted/);
+
+      // Player 1 changes vote to "13"
+      await page1.click('.deck-card:has-text("13")');
+
+      // Wait for recall animation to complete and new card to spawn
+      await page1.waitForTimeout(1500);
+
+      // Verify "13" is now selected, "5" is not
+      await expect(page1.locator('.deck-card:has-text("13")')).toHaveClass(/selected/);
+      await expect(page1.locator('.deck-card:has-text("5")')).not.toHaveClass(/selected/);
+
+      // Player 2 votes so we can reveal
+      await page2.click('.deck-card:has-text("8")');
+      await page2.waitForTimeout(500);
+
+      // Wait for cards to settle on both pages
+      await waitForCardsSettled(page1);
+      await waitForCardsSettled(page2);
+
+      // Reveal cards
+      await expect(page1.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
+      await page1.click('#reveal-btn');
+      await waitForRevealComplete(page1);
+
+      // Verify final state shows 2 cards (one per player)
+      const state = await page1.evaluate(() => window.__SPKR_MOCK__?.getMockState?.());
+      expect(state.isRevealed).toBe(true);
+      expect(state.cards).toBe(2);
+
+    } finally {
+      await Promise.all(contexts.map(ctx => ctx.close()));
+    }
+  });
 });

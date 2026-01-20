@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { STORAGE_KEY_NAME, STORAGE_KEY_COLOR } from './constants.js';
-import { elements, localPlayer, players, setGameStarted } from './state.js';
+import { getState } from './store.js';
 import * as mp from './multiplayer.js';
 import { emit } from './debug.js';
 
@@ -20,6 +20,7 @@ export function setStartGameCallback(callback) {
 }
 
 export function showLobby() {
+    const { elements, setGameStarted } = getState();
     elements.lobbyScreen.classList.remove('hidden');
     elements.canvas.classList.add('hidden');
     elements.uiLayer.classList.add('hidden');
@@ -27,6 +28,7 @@ export function showLobby() {
 }
 
 export function hideLobby() {
+    const { elements, setGameStarted } = getState();
     elements.lobbyScreen.classList.add('hidden');
     elements.canvas.classList.remove('hidden');
     elements.uiLayer.classList.remove('hidden');
@@ -34,6 +36,7 @@ export function hideLobby() {
 }
 
 export function showLobbyStatus(message) {
+    const { elements } = getState();
     elements.lobbyStatus.classList.remove('hidden');
     elements.lobbyStatusText.textContent = message;
     elements.lobbyError.classList.add('hidden');
@@ -42,12 +45,14 @@ export function showLobbyStatus(message) {
 }
 
 export function hideLobbyStatus() {
+    const { elements } = getState();
     elements.lobbyStatus.classList.add('hidden');
     elements.createRoomBtn.disabled = false;
     elements.joinRoomBtn.disabled = false;
 }
 
 export function showLobbyError(message) {
+    const { elements } = getState();
     elements.lobbyError.textContent = message;
     elements.lobbyError.classList.remove('hidden');
     hideLobbyStatus();
@@ -57,31 +62,34 @@ export function createRoom() {
     try {
         showLobbyStatus('Creating room...');
 
+        const { elements, localPlayer, updateLocalPlayer } = getState();
+
         // Update local player info from lobby inputs
         // Use placeholder (random name) if input is empty
         const inputName = elements.lobbyNameInput.value.trim();
-        localPlayer.name = inputName || elements.lobbyNameInput.placeholder;
-        localPlayer.color = elements.lobbyColorInput.value;
-        localPlayer.isObserver = elements.lobbyObserverInput.checked;
+        const name = inputName || elements.lobbyNameInput.placeholder;
+        const color = elements.lobbyColorInput.value;
+        const isObserver = elements.lobbyObserverInput.checked;
 
         // Save to localStorage
-        saveIdentityToStorage(localPlayer.name, localPlayer.color);
+        saveIdentityToStorage(name, color);
 
         const { code, peerId } = mp.createNewRoom();
-        localPlayer.id = peerId;
+
+        updateLocalPlayer({ name, color, isObserver, id: peerId });
 
         // Update game UI with lobby values
-        elements.colorInput.value = localPlayer.color;
-        elements.colorPreview.style.backgroundColor = localPlayer.color;
-        elements.nameInput.value = localPlayer.name;
+        elements.colorInput.value = color;
+        elements.colorPreview.style.backgroundColor = color;
+        elements.nameInput.value = name;
         elements.roomCodeDisplay.textContent = code;
 
         // Broadcast our player info
         mp.broadcastPlayerInfo({
-            name: localPlayer.name,
-            color: localPlayer.color,
+            name,
+            color,
             voted: false,
-            isObserver: localPlayer.isObserver
+            isObserver
         });
 
         emit('roomCreated', { code });
@@ -92,6 +100,7 @@ export function createRoom() {
 }
 
 export function joinRoom() {
+    const { elements } = getState();
     const code = elements.roomCodeInput.value.trim();
     if (!code) {
         showLobbyError('Please enter a room code');
@@ -101,31 +110,34 @@ export function joinRoom() {
     try {
         showLobbyStatus('Joining room...');
 
+        const { localPlayer, updateLocalPlayer } = getState();
+
         // Update local player info from lobby inputs
         // Use placeholder (random name) if input is empty
         const inputName = elements.lobbyNameInput.value.trim();
-        localPlayer.name = inputName || elements.lobbyNameInput.placeholder;
-        localPlayer.color = elements.lobbyColorInput.value;
-        localPlayer.isObserver = elements.lobbyObserverInput.checked;
+        const name = inputName || elements.lobbyNameInput.placeholder;
+        const color = elements.lobbyColorInput.value;
+        const isObserver = elements.lobbyObserverInput.checked;
 
         // Save to localStorage
-        saveIdentityToStorage(localPlayer.name, localPlayer.color);
+        saveIdentityToStorage(name, color);
 
         const { code: normalizedCode, peerId } = mp.joinExistingRoom(code);
-        localPlayer.id = peerId;
+
+        updateLocalPlayer({ name, color, isObserver, id: peerId });
 
         // Update game UI with lobby values
-        elements.colorInput.value = localPlayer.color;
-        elements.colorPreview.style.backgroundColor = localPlayer.color;
-        elements.nameInput.value = localPlayer.name;
+        elements.colorInput.value = color;
+        elements.colorPreview.style.backgroundColor = color;
+        elements.nameInput.value = name;
         elements.roomCodeDisplay.textContent = normalizedCode;
 
         // Broadcast our player info
         mp.broadcastPlayerInfo({
-            name: localPlayer.name,
-            color: localPlayer.color,
+            name,
+            color,
             voted: false,
-            isObserver: localPlayer.isObserver
+            isObserver
         });
 
         emit('roomJoined', { code: normalizedCode });
@@ -137,7 +149,7 @@ export function joinRoom() {
 
 export function leaveRoom() {
     mp.leaveCurrentRoom();
-    players.clear();
+    getState().clearPlayers();
     showLobby();
 }
 
@@ -152,6 +164,7 @@ export async function copyRoomCode() {
 
             await navigator.clipboard.writeText(url.toString());
             // Brief visual feedback
+            const { elements } = getState();
             const display = elements.roomCodeDisplay;
             const original = display.textContent;
             display.textContent = 'Copied!';
@@ -167,6 +180,8 @@ export function checkUrlForRoom() {
     const roomCode = params.get('room');
 
     if (roomCode) {
+        const { elements } = getState();
+
         // Pre-fill the room code (let user set name and choose join mode)
         elements.roomCodeInput.value = roomCode;
 

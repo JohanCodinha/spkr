@@ -9,7 +9,7 @@ import {
     MOBILE_THROW_FORCE,
     DESKTOP_THROW_FORCE
 } from './constants.js';
-import { cards, width, height, engine, setEngine, setCards } from './state.js';
+import { getState } from './store.js';
 import { getCardSize } from './drawing.js';
 
 function getThrowForce() {
@@ -27,11 +27,12 @@ const { Engine, Bodies, Composite, Body } = Matter;
 export function initEngine() {
     const eng = Engine.create();
     eng.gravity.y = 0;
-    setEngine(eng);
+    getState().setEngine(eng);
     return eng;
 }
 
 export function clearEngine() {
+    const { engine } = getState();
     if (engine) {
         Composite.clear(engine.world);
         Engine.clear(engine);
@@ -40,6 +41,7 @@ export function clearEngine() {
 }
 
 export function spawnCard(player, value) {
+    const { width, height, engine, pushCard } = getState();
     const startX = player.pos.x * width;
     const startY = player.pos.y * height;
     const cardSize = getCardSize();
@@ -74,7 +76,7 @@ export function spawnCard(player, value) {
         targetAngle: 0
     };
 
-    cards.push(newCard);
+    pushCard(newCard);
     return newCard;
 }
 
@@ -98,6 +100,7 @@ export function setCardAngle(card, angle) {
 }
 
 export function updateEngine() {
+    const { engine } = getState();
     if (engine) {
         Engine.update(engine, 1000 / 60);
     }

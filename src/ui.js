@@ -3,13 +3,13 @@
 // =============================================================================
 
 import { config } from './config.js';
-import { elements, setElements, localPlayer, cards, getAllPlayers } from './state.js';
+import { getState } from './store.js';
 import { saveIdentityToStorage } from './lobby.js';
 import * as mp from './multiplayer.js';
 import observerIconSvg from './observer-icon.svg';
 
 export function cacheElements() {
-    setElements({
+    getState().setElements({
         // Lobby
         lobbyScreen: document.getElementById('lobby-screen'),
         lobbyColorInput: document.getElementById('lobby-color-input'),
@@ -40,6 +40,7 @@ export function cacheElements() {
 }
 
 export function toggleSettings() {
+    const { elements } = getState();
     elements.settingsPanel.classList.toggle('hidden');
 }
 
@@ -48,6 +49,7 @@ export function updateConfig(key, value) {
     document.getElementById(`val-${key}`).innerText = value;
 
     if (key === 'restitution' || key === 'frictionAir') {
+        const { cards } = getState();
         cards.forEach(c => {
             if (c.body) {
                 c.body.restitution = config.restitution;
@@ -58,24 +60,30 @@ export function updateConfig(key, value) {
 }
 
 export function updateIdentity(key, value) {
+    const { localPlayer, elements, updateLocalPlayer } = getState();
+
     if (key === 'name') {
-        localPlayer.name = value || localPlayer.name;
-        elements.nameInput.value = localPlayer.name;
-        saveIdentityToStorage(localPlayer.name, null);
+        const newName = value || localPlayer.name;
+        updateLocalPlayer({ name: newName });
+        elements.nameInput.value = newName;
+        saveIdentityToStorage(newName, null);
     }
     if (key === 'color') {
-        localPlayer.color = value;
+        updateLocalPlayer({ color: value });
         elements.colorPreview.style.backgroundColor = value;
         elements.colorInput.value = value;
-        saveIdentityToStorage(null, localPlayer.color);
+        saveIdentityToStorage(null, value);
     }
+
+    // Re-read localPlayer after updates
+    const updatedLocalPlayer = getState().localPlayer;
 
     // Broadcast updated info to peers
     mp.broadcastPlayerInfo({
-        name: localPlayer.name,
-        color: localPlayer.color,
-        voted: localPlayer.voted,
-        isObserver: localPlayer.isObserver
+        name: updatedLocalPlayer.name,
+        color: updatedLocalPlayer.color,
+        voted: updatedLocalPlayer.voted,
+        isObserver: updatedLocalPlayer.isObserver
     });
 
     renderHeader();
@@ -87,6 +95,7 @@ let lastPlayerCount = 0;
 
 // Check if container needs compact mode (only when player count changes)
 function checkCompactMode(forceCheck = false) {
+    const { elements } = getState();
     if (!elements.avatarContainer) return;
 
     const container = elements.avatarContainer;
@@ -168,6 +177,7 @@ function createAvatarElement(p, isNew) {
 }
 
 export function renderHeader() {
+    const { elements, getAllPlayers } = getState();
     if (!elements.avatarContainer) return;
 
     const allPlayers = getAllPlayers();

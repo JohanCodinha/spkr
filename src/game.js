@@ -14,19 +14,7 @@ import {
     STORAGE_KEY_NAME,
     STORAGE_KEY_COLOR
 } from './constants.js';
-import {
-    cards, setCards,
-    particles, setParticles,
-    isRevealed, setIsRevealed,
-    revealComplete, setRevealComplete,
-    ctx, setCtx,
-    width, height, setDimensions,
-    gameStarted,
-    elements,
-    localPlayer, players,
-    engine,
-    getAllPlayers
-} from './state.js';
+import { getState } from './store.js';
 import { getCardSize, getDisplayName, renderCardFront, renderCardBack } from './drawing.js';
 import { initEngine, clearEngine, spawnCard, setCardStatic, setCardPosition, setCardAngle, updateEngine } from './physics.js';
 import { drawTable, drawCards, drawResetButton, drawParticles, spawnConfetti } from './drawing.js';
@@ -86,6 +74,8 @@ function loadIdentityFromStorage() {
 function init() {
     cacheElements();
     setupEventListeners();
+
+    const { elements, setCtx, updateLocalPlayer } = getState();
     setCtx(elements.canvas.getContext('2d'));
 
     // Initialize logo editor (debug only, for lobby)
@@ -107,14 +97,14 @@ function init() {
     // If saved name exists, use it as value; otherwise leave empty (will use placeholder)
     if (saved.name) {
         elements.lobbyNameInput.value = saved.name;
-        localPlayer.name = saved.name;
+        updateLocalPlayer({ name: saved.name });
     } else {
-        localPlayer.name = randomName; // Will be used if input stays empty
+        updateLocalPlayer({ name: randomName }); // Will be used if input stays empty
     }
 
     // Always use random color in lobby (only saved when entering room)
     const color = generateRandomColor();
-    localPlayer.color = color;
+    updateLocalPlayer({ color });
     elements.lobbyColorInput.value = color;
     elements.lobbyColorPreview.style.backgroundColor = color;
 
@@ -134,6 +124,8 @@ function init() {
 }
 
 function setupEventListeners() {
+    const { elements, updateLocalPlayer } = getState();
+
     // Lobby buttons
     elements.createRoomBtn.addEventListener('click', createRoom);
     elements.joinRoomBtn.addEventListener('click', joinRoom);
@@ -145,8 +137,9 @@ function setupEventListeners() {
 
     // Lobby color preview (don't save until room entry)
     elements.lobbyColorInput.addEventListener('input', (e) => {
+        const { elements } = getState();
         elements.lobbyColorPreview.style.backgroundColor = e.target.value;
-        localPlayer.color = e.target.value;
+        getState().updateLocalPlayer({ color: e.target.value });
     });
 
     // Game header buttons
@@ -182,12 +175,14 @@ function startGame() {
     hideLobby();
     hideLobbyStatus();
 
+    const { elements, localPlayer, players } = getState();
+
     elements.canvas.addEventListener('click', handleCanvasClick);
     elements.canvas.addEventListener('mousemove', handleCanvasMove, { passive: true });
 
     // Start in advertising mode (waiting for peers)
     setAdvertising();
-    updatePeerCount(players.size);
+    updatePeerCount(Object.keys(players).length);
 
     buildDeck();
 
@@ -204,7 +199,8 @@ function startGame() {
 
 // Callback for debug tools to spawn cards for dummy players
 function spawnCardForDummy(value, playerId) {
-    const player = players.get(playerId);
+    const { players, cards } = getState();
+    const player = players[playerId];
     if (player && !cards.some(c => c.player.id === playerId)) {
         spawnCard(player, value);
         checkState();
@@ -212,6 +208,7 @@ function spawnCardForDummy(value, playerId) {
 }
 
 function resize() {
+    const { elements, ctx, setDimensions } = getState();
     const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -224,6 +221,7 @@ function resize() {
 }
 
 function buildDeck() {
+    const { elements } = getState();
     elements.deck.innerHTML = '';
     FIBONACCI.forEach(val => {
         const btn = document.createElement('button');
@@ -247,6 +245,7 @@ function buildDeck() {
 // =============================================================================
 
 function handleCanvasClick(e) {
+    const { isRevealed, elements, width, height } = getState();
     if (!isRevealed) return;
 
     const rect = elements.canvas.getBoundingClientRect();
@@ -263,6 +262,7 @@ function handleCanvasClick(e) {
 }
 
 function handleCanvasMove(e) {
+    const { isRevealed, elements, width, height } = getState();
     if (!isRevealed) {
         elements.canvas.style.cursor = 'default';
         return;
@@ -286,6 +286,8 @@ function handleCanvasMove(e) {
 function setupMultiplayerHandlers() {
     mp.onPeerJoin((peerId) => {
         console.log('Peer joined:', peerId);
+        const { localPlayer, isRevealed } = getState();
+
         // Broadcast our info so they know about us
         mp.broadcastPlayerInfo({
             name: localPlayer.name,
@@ -311,12 +313,14 @@ function setupMultiplayerHandlers() {
 
     mp.onPeerLeave((peerId) => {
         console.log('Peer left:', peerId);
+        const { deletePlayer, filterCards, players } = getState();
+
         // Remove player and their cards
-        players.delete(peerId);
-        setCards(cards.filter(c => c.player.id !== peerId));
+        deletePlayer(peerId);
+        filterCards(c => c.player.id !== peerId);
 
         // Update connection status
-        updatePeerCount(players.size);
+        updatePeerCount(Object.keys(getState().players).length);
 
         renderHeader();
         checkState();
@@ -324,10 +328,11 @@ function setupMultiplayerHandlers() {
 
     mp.onPlayerInfoReceived((data, peerId) => {
         console.log('Player info received:', peerId, data);
-        const existingPlayer = players.get(peerId);
+        const { players, setPlayer } = getState();
+        const existingPlayer = players[peerId];
         const isNewPlayer = !existingPlayer;
 
-        players.set(peerId, {
+        setPlayer(peerId, {
             id: peerId,
             name: data.name,
             color: data.color,
@@ -338,8 +343,8 @@ function setupMultiplayerHandlers() {
 
         // Update connection status when a new player joins
         if (isNewPlayer) {
-            updatePeerCount(players.size);
-            emit('peerJoined', { peerId, count: players.size + 1 }); // +1 for local player
+            updatePeerCount(Object.keys(getState().players).length);
+            emit('peerJoined', { peerId, count: Object.keys(getState().players).length + 1 }); // +1 for local player
         }
 
         updatePlayerPositions();
@@ -348,7 +353,8 @@ function setupMultiplayerHandlers() {
 
     mp.onVoteReceived((data, peerId) => {
         console.log('Vote received:', peerId, data);
-        let player = players.get(peerId);
+        const { players, cards, isRevealed, setPlayer } = getState();
+        let player = players[peerId];
 
         // If player doesn't exist yet, create from vote data
         if (!player && data.player) {
@@ -359,9 +365,9 @@ function setupMultiplayerHandlers() {
                 voted: false,
                 pos: { x: 0.5, y: 0.5 }
             };
-            players.set(peerId, player);
+            setPlayer(peerId, player);
             updatePlayerPositions();
-            updatePeerCount(players.size);
+            updatePeerCount(Object.keys(getState().players).length);
         }
 
         // Check if card already exists for this player (avoid duplicates)
@@ -371,6 +377,7 @@ function setupMultiplayerHandlers() {
         if (player && !cardExists) {
             player.voted = true;
             player.vote = data.value;
+            setPlayer(peerId, player);
             const card = spawnCard(player, data.value);
 
             // If already revealed, position this card immediately
@@ -385,7 +392,7 @@ function setupMultiplayerHandlers() {
 
     mp.onRevealReceived((data, peerId) => {
         console.log('Reveal received from:', peerId);
-        if (!isRevealed) {
+        if (!getState().isRevealed) {
             doReveal();
         }
     });
@@ -396,10 +403,11 @@ function setupMultiplayerHandlers() {
     });
 
     mp.onStateRequest((data, peerId) => {
+        const { isRevealed, players, localPlayer } = getState();
         // Send current game state to the requesting peer
         const state = {
             isRevealed,
-            players: Array.from(players.entries()),
+            players: Object.entries(players),
             localVote: localPlayer.voted ? localPlayer.vote : null
         };
         mp.sendStateTo(peerId, state);
@@ -407,19 +415,20 @@ function setupMultiplayerHandlers() {
 
     mp.onStateSync((data, peerId) => {
         // Sync state from another peer
-        if (data.isRevealed && !isRevealed) {
+        if (data.isRevealed && !getState().isRevealed) {
             doReveal();
         }
     });
 }
 
 function updatePlayerPositions() {
-    const remotePlayers = Array.from(players.values());
+    const { players, setPlayer } = getState();
+    const remotePlayers = Object.values(players);
     const positions = getPlayerPositions(remotePlayers.length);
 
     remotePlayers.forEach((player, i) => {
         player.pos = positions[i];
-        players.set(player.id, player);
+        setPlayer(player.id, player);
     });
 }
 
@@ -428,19 +437,22 @@ function updatePlayerPositions() {
 // =============================================================================
 
 function userVote(val) {
+    const { localPlayer, elements, updateLocalPlayer } = getState();
     if (localPlayer.voted || localPlayer.isObserver) return;
 
-    localPlayer.voted = true;
-    localPlayer.vote = val;
+    updateLocalPlayer({ voted: true, vote: val });
+
+    // Re-read after update
+    const updatedLocalPlayer = getState().localPlayer;
 
     // Spawn card locally
-    spawnCard({ ...localPlayer, pos: { x: 0.5, y: 1.1 } }, val);
+    spawnCard({ ...updatedLocalPlayer, pos: { x: 0.5, y: 1.1 } }, val);
 
     // Broadcast to peers
     mp.broadcastVote(val, {
-        id: localPlayer.id,
-        name: localPlayer.name,
-        color: localPlayer.color
+        id: updatedLocalPlayer.id,
+        name: updatedLocalPlayer.name,
+        color: updatedLocalPlayer.color
     });
 
     elements.deck.classList.add('voted');
@@ -449,6 +461,7 @@ function userVote(val) {
 }
 
 function checkState() {
+    const { getAllPlayers, localPlayer, cards, elements } = getState();
     const allPlayers = getAllPlayers();
     const voters = allPlayers.filter(p => !p.isObserver);
     const votedCount = voters.filter(p => p.voted).length;
@@ -473,6 +486,7 @@ function revealCards() {
 }
 
 function positionCardsForReveal() {
+    const { cards, width, height } = getState();
     const cardSize = getCardSize();
     const numCards = cards.length;
     const cardDiagonal = Math.sqrt(cardSize.w * cardSize.w + cardSize.h * cardSize.h);
@@ -490,6 +504,7 @@ function positionCardsForReveal() {
 }
 
 function doReveal() {
+    const { elements, setIsRevealed } = getState();
     setIsRevealed(true);
     elements.revealBtn.classList.add('hidden');
     elements.deck.classList.add('revealed');
@@ -511,6 +526,11 @@ function doReset() {
 }
 
 function resetGameState() {
+    const {
+        setIsRevealed, setRevealComplete, setCards, setParticles,
+        updateLocalPlayer, players, setPlayer, elements, localPlayer
+    } = getState();
+
     setIsRevealed(false);
     setRevealComplete(false);
 
@@ -518,14 +538,13 @@ function resetGameState() {
 
     setCards([]);
     setParticles([]);
-    localPlayer.voted = false;
-    localPlayer.vote = null;
+    updateLocalPlayer({ voted: false, vote: null });
 
     // Reset all remote players' voted status
-    players.forEach((player, id) => {
+    Object.entries(players).forEach(([id, player]) => {
         player.voted = false;
         player.vote = null;
-        players.set(id, player);
+        setPlayer(id, player);
     });
 
     if (elements.revealBtn) {
@@ -547,6 +566,8 @@ function resetGameState() {
 function loop() {
     requestAnimationFrame(loop);
 
+    const { gameStarted, ctx, width, height } = getState();
+
     if (!gameStarted) {
         // Just clear in lobby
         ctx.clearRect(0, 0, width, height);
@@ -563,6 +584,8 @@ function loop() {
 }
 
 function updateLogic() {
+    const { isRevealed, cards, particles, revealComplete, setRevealComplete, setParticles } = getState();
+
     if (isRevealed) {
         let allSettled = cards.length > 0;
         cards.forEach(card => {
@@ -638,10 +661,8 @@ if (__DEBUG__) {
     window.__SPKR_MOCK__ = {
         // Start game without P2P (for mock mode)
         startGame(name, color, isObserver = false) {
-            localPlayer.name = name;
-            localPlayer.color = color;
-            localPlayer.id = 'local-mock';
-            localPlayer.isObserver = isObserver;
+            const { elements, updateLocalPlayer } = getState();
+            updateLocalPlayer({ name, color, id: 'local-mock', isObserver });
             elements.colorInput.value = color;
             elements.colorPreview.style.backgroundColor = color;
             elements.nameInput.value = name;
@@ -661,13 +682,15 @@ if (__DEBUG__) {
         },
         // Add a fake remote player and optionally spawn their card
         addPlayer(id, name, color, vote, isObserver = false) {
-            const pos = getPlayerPositions(players.size + 1)[players.size];
+            const { players, setPlayer } = getState();
+            const playerCount = Object.keys(players).length;
+            const pos = getPlayerPositions(playerCount + 1)[playerCount];
             const player = { id, name, color, voted: !isObserver, vote: isObserver ? null : vote, isObserver, pos };
-            players.set(id, player);
+            setPlayer(id, player);
             if (!isObserver) {
                 spawnCard(player, vote);
             }
-            updatePeerCount(players.size);
+            updatePeerCount(Object.keys(getState().players).length);
             renderHeader();
             checkState();
         },
@@ -676,12 +699,13 @@ if (__DEBUG__) {
             doReveal();
         },
         // Get current state
-        getState() {
+        getMockState() {
+            const state = getState();
             return {
-                players: players.size,
-                cards: cards.length,
-                isRevealed,
-                revealComplete
+                players: Object.keys(state.players).length,
+                cards: state.cards.length,
+                isRevealed: state.isRevealed,
+                revealComplete: state.revealComplete
             };
         },
         // Pure rendering functions for testing

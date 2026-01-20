@@ -1,7 +1,7 @@
 // Debug hooks for screenshot automation
 // Stripped from production builds via __DEBUG__ flag (set by esbuild)
 
-import { players, localPlayer } from './state.js';
+import { getState } from './store.js';
 import { renderHeader } from './ui.js';
 
 export function emit(event, detail = {}) {
@@ -62,7 +62,8 @@ function getRandomElement(arr) {
 }
 
 function getUnusedName() {
-    const usedNames = new Set([localPlayer.name, ...[...players.values()].map(p => p.name)]);
+    const { localPlayer, players } = getState();
+    const usedNames = new Set([localPlayer.name, ...Object.values(players).map(p => p.name)]);
 
     const available = DUMMY_NAMES.filter(n => !usedNames.has(n));
     if (available.length > 0) {
@@ -72,7 +73,8 @@ function getUnusedName() {
 }
 
 function getUnusedColor() {
-    const usedColors = new Set([localPlayer.color, ...[...players.values()].map(p => p.color)]);
+    const { localPlayer, players } = getState();
+    const usedColors = new Set([localPlayer.color, ...Object.values(players).map(p => p.color)]);
 
     const available = DUMMY_COLORS.filter(c => !usedColors.has(c));
     if (available.length > 0) {
@@ -90,10 +92,11 @@ function getPlayerPosition(index, total) {
 }
 
 function updateDummyPositions() {
+    const { setPlayer } = getState();
     const allDummies = [...dummyPlayers.values()];
     allDummies.forEach((dummy, i) => {
         dummy.pos = getPlayerPosition(i, allDummies.length);
-        players.set(dummy.id, dummy);
+        setPlayer(dummy.id, dummy);
     });
 }
 
@@ -125,6 +128,7 @@ function updateDummyCount() {
 }
 
 export function addDummyPlayer() {
+    const { setPlayer } = getState();
     const id = generateDummyId();
     const dummy = {
         id,
@@ -137,7 +141,7 @@ export function addDummyPlayer() {
     };
 
     dummyPlayers.set(id, dummy);
-    players.set(id, dummy);
+    setPlayer(id, dummy);
 
     // Update positions for all dummies
     updateDummyPositions();
@@ -152,8 +156,9 @@ export function addDummyPlayer() {
 }
 
 export function clearDummyPlayers() {
+    const { deletePlayer } = getState();
     dummyPlayers.forEach((_, id) => {
-        players.delete(id);
+        deletePlayer(id);
     });
     dummyPlayers.clear();
 
@@ -164,11 +169,12 @@ export function clearDummyPlayers() {
 export function resetDummyPlayers() {
     if (!__DEBUG__) return;
 
+    const { setPlayer } = getState();
     // Reset voted status for all dummy players and schedule new votes
     dummyPlayers.forEach((dummy, id) => {
         dummy.voted = false;
         dummy.vote = null;
-        players.set(id, dummy);
+        setPlayer(id, dummy);
         scheduleRandomVote(id);
     });
 }

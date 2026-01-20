@@ -617,8 +617,7 @@ input[type=range]::-moz-range-track {
 }
 
 .lobby-logo {
-    width: 12rem;
-    height: 10rem;
+    height: 13rem;
     margin-bottom: 0.75rem;
     /* Allow card hover effects to overflow */
     overflow: visible;

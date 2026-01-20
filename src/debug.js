@@ -173,6 +173,21 @@ export function resetDummyPlayers() {
     });
 }
 
+// =============================================================================
+// LOGO EDITOR (now self-contained in component)
+// =============================================================================
+
+// The logo editor is now integrated directly into the card-hand-logo component.
+// When __DEBUG__ is true, the component automatically renders its own editor UI.
+// No external initialization is needed - simply using <card-hand-logo> in debug
+// mode will enable the editor.
+
+export function initLogoEditor() {
+    if (!__DEBUG__) return;
+    // Editor is now self-contained in the component - nothing to initialize
+    console.log('[DEBUG] Logo editor is now self-contained in <card-hand-logo>');
+}
+
 export function initDebugTools(castVoteCallback) {
     if (!__DEBUG__) return;
 

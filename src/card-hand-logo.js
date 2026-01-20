@@ -1,174 +1,120 @@
 /**
- * CardHandLogo Web Component
- *
- * A decorative logo showing three playing cards arranged in a fan.
- * Configuration extracted from card-hand-export.html demo.
+ * CardHandLogo Web Component (SVG-based, parametric)
+ * Fills its container - parent controls size via CSS.
  *
  * Usage:
  *   <card-hand-logo></card-hand-logo>
- *   <card-hand-logo size="12rem"></card-hand-logo>
  */
 
-// Import card SVGs as text (esbuild handles this)
-import CARD_BLUE from './cards/card-blue.svg';
+// Import card SVGs (esbuild bundles these as text)
 import CARD_GOLD from './cards/card-gold.svg';
+import CARD_BLUE from './cards/card-blue.svg';
 import CARD_GREEN from './cards/card-green.svg';
 
-// Convert SVG text to data URL (handles unicode safely)
-function svgToDataUrl(svg) {
-    return 'data:image/svg+xml,' + encodeURIComponent(svg);
-}
+// Debug editor import - tree-shaken in production via __DEBUG__
+// eslint-disable-next-line no-unused-vars
+import * as editorModule from './card-hand-logo-editor.js';
+const renderEditor = __DEBUG__ ? editorModule.renderEditor : null;
 
-// Pre-compute data URLs at module load time
-const CARD_BLUE_URL = svgToDataUrl(CARD_BLUE);
-const CARD_GOLD_URL = svgToDataUrl(CARD_GOLD);
-const CARD_GREEN_URL = svgToDataUrl(CARD_GREEN);
+const CARD_SVGS = [CARD_GOLD, CARD_BLUE, CARD_GREEN];
 
-// Shadow colors (cross-shadows as per demo)
-const SHADOW_GOLD = 'rgba(215, 182, 94, 0.5)';
-const SHADOW_BLUE = 'rgba(134, 163, 201, 0.5)';
-const SHADOW_GREEN = 'rgba(118, 174, 133, 0.5)';
+// =============================================================================
+// STATE - Shared between component and editor
+// Editor-owned fields (fan, anchor, hover, shadow) are inputs to computation
+// Component-owned fields (cards[].transform, viewBox, etc.) are precomputed
+// =============================================================================
+
+const STATE = {
+    // --- Editor inputs (used by editor to compute positions) ---
+    cardHeight: 390,
+    anchor: { x: 0, y: 180 },
+    fan: {
+        spread: 62,        // total angle span from first to last card (degrees)
+        spacing: 100,       // horizontal spacing between adjacent cards
+        arc: 40,           // vertical drop for outer cards (curve height)
+        rotation: 0        // base rotation offset for entire fan
+    },
+    hover: {
+        scale: 1.25,
+        lift: 40
+    },
+    shadow: {
+        dx: -13,
+        dy: 8,
+        blur: 1,
+        opacity: 0.35
+    },
+
+    // --- Precomputed by editor, used directly by component ---
+    viewBox: '-533.17 -367.50 1066.34 692.52',
+    cardWidth: 264.11,
+    hoverTransform: 'translateY(-10.3%) scale(1.25)',
+    cards: [
+        { svgIndex: 1, shadowColor: '#86a3c9', transform: 'translate(-100, 220) rotate(-31)' },
+        { svgIndex: 0, shadowColor: '#d7b65e', transform: 'translate(0, 180) rotate(0)' },
+        { svgIndex: 2, shadowColor: '#76ae85', transform: 'translate(100, 220) rotate(31)' }
+    ]
+};
+
+// =============================================================================
+// COMPONENT
+// =============================================================================
 
 class CardHandLogo extends HTMLElement {
-    static get observedAttributes() {
-        return ['size'];
-    }
-
     constructor() {
         super();
-        this.shadow = this.attachShadow({ mode: 'open' });
+        this.attachShadow({ mode: 'open' });
         this.render();
     }
 
-    get size() {
-        return this.getAttribute('size') || '10rem';
-    }
-
-    set size(value) {
-        this.setAttribute('size', value);
-    }
-
-    attributeChangedCallback(_name, oldValue, newValue) {
-        if (oldValue !== newValue) {
-            this.render();
+    connectedCallback() {
+        // Initialize debug editor when component is added to DOM
+        if (__DEBUG__ && renderEditor) {
+            renderEditor(this, STATE, CARD_SVGS);
         }
     }
 
     render() {
-        const size = this.size;
+        const { viewBox, cardWidth, cardHeight, hoverTransform, shadow, cards } = STATE;
 
-        // Demo uses 300px card height - we scale relative to that
-        // Card positions in demo: left=-84px, center=0, right=84px at 300px height
-        // Scale factor for offsets: size / 300px equivalent
-        const styles = `
-            :host {
-                display: inline-block;
-                width: ${size};
-                height: ${size};
-            }
+        // Build shadow filters
+        const filters = cards.map((card, i) => `
+            <filter id="card-shadow-${i}" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="${shadow.dx}" dy="${shadow.dy}" stdDeviation="${shadow.blur}"
+                    flood-color="${card.shadowColor}" flood-opacity="${shadow.opacity}"/>
+            </filter>
+        `).join('');
 
-            .hand-container {
-                position: relative;
-                width: 100%;
-                height: 100%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                --hover-scale: 1.1;
-                --hover-lift: 30px;
-            }
+        // Build card groups using precomputed transforms
+        const cardElements = cards.map((card, i) => `
+            <g class="card-container" transform="${card.transform}">
+                <rect class="hit-area" x="${-cardWidth / 2 - 5}" y="${-cardHeight - 5}"
+                    width="${cardWidth + 10}" height="${cardHeight + 10}" fill="transparent"/>
+                <g class="card" filter="url(#card-shadow-${i})">
+                    <svg x="${-cardWidth / 2}" y="${-cardHeight}"
+                        width="${cardWidth}" height="${cardHeight}">
+                        ${CARD_SVGS[card.svgIndex]}
+                    </svg>
+                </g>
+            </g>
+        `).join('');
 
-            .card-wrapper {
-                position: absolute;
-                transform-origin: center bottom;
-                transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(var(--s));
-                /* Fast return transition */
-                transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.2s ease;
-                cursor: pointer;
-            }
-
-            .card-wrapper:hover {
-                /* Bouncy enter transition */
-                transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s ease;
-                transform:
-                    translate(var(--x), calc(var(--y) - var(--hover-lift)))
-                    rotate(var(--r))
-                    scale(calc(var(--s) * var(--hover-scale)));
-                z-index: 10 !important;
-            }
-
-            .card-wrapper img {
-                pointer-events: none;
-                display: block;
-                height: 300px;
-                width: auto;
-            }
-
-            /* Card 1: Blue ? card on left with gold shadow */
-            .card-left {
-                --x: -84px;
-                --y: 30px;
-                --r: -18deg;
-                --s: 0.63;
-                z-index: 0;
-                filter: drop-shadow(5px 10px 12px ${SHADOW_GOLD});
-            }
-
-            /* Card 2: Gold ♠ card in center with blue shadow */
-            .card-center {
-                --x: 0px;
-                --y: 0px;
-                --r: 0deg;
-                --s: 0.63;
-                z-index: 1;
-                filter: drop-shadow(5px 10px 12px ${SHADOW_BLUE});
-            }
-
-            /* Card 3: Green 😊 card on right with green shadow */
-            .card-right {
-                --x: 84px;
-                --y: 30px;
-                --r: 18deg;
-                --s: 0.63;
-                z-index: 2;
-                filter: drop-shadow(5px 10px 12px ${SHADOW_GREEN});
-            }
+        this.shadowRoot.innerHTML = `
+            <style>
+                :host { display: block; }
+                .card-container { cursor: default; }
+                .card {
+                    transform-box: fill-box;
+                    transform-origin: center bottom;
+                    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+                }
+                .card-container:hover .card { transform: ${hoverTransform}; }
+            </style>
+            <svg viewBox="${viewBox}" style="width:100%;height:100%;display:block">
+                <defs>${filters}</defs>
+                ${cardElements}
+            </svg>
         `;
-
-        // Clear shadow and build DOM
-        this.shadow.innerHTML = '';
-
-        // Add styles
-        const styleEl = document.createElement('style');
-        styleEl.textContent = styles;
-        this.shadow.appendChild(styleEl);
-
-        // Create container
-        const container = document.createElement('div');
-        container.className = 'hand-container';
-
-        // Card data - order: Blue (left), Gold (center), Green (right)
-        const cards = [
-            { cls: 'card-left', url: CARD_BLUE_URL, alt: 'Question card' },
-            { cls: 'card-center', url: CARD_GOLD_URL, alt: 'Ace of Spades card' },
-            { cls: 'card-right', url: CARD_GREEN_URL, alt: 'Smiley card' }
-        ];
-
-        // Create cards
-        cards.forEach(card => {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'card-wrapper ' + card.cls;
-
-            const img = document.createElement('img');
-            img.src = card.url;
-            img.alt = card.alt;
-            img.draggable = false;
-
-            wrapper.appendChild(img);
-            container.appendChild(wrapper);
-        });
-
-        this.shadow.appendChild(container);
     }
 }
 

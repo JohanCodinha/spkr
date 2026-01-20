@@ -1,0 +1,9 @@
+name = "spkr"
+main = "src/worker.js"
+compatibility_date = "2024-12-01"
+
+[assets]
+directory = "public"
+
+[env.production]
+routes = [{ pattern = "eval.work", custom_domain = true }]

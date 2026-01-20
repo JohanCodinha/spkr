@@ -16,7 +16,7 @@ import { spawn } from 'child_process';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, 'public');
 const srcDir = join(__dirname, 'src');
-const componentPath = join(__dirname, 'src', 'card-hand-logo.js');
+const logoPath = join(__dirname, 'src', 'card-hand-logo.svg');
 
 const PORT = process.env.PORT || 3000;
 
@@ -71,15 +71,6 @@ build.on('close', (code) => {
     startServer();
 });
 
-function patchState(source, newState) {
-    // Match STATE object from "const STATE = {" to the closing "};"
-    // The STATE block ends with "};" followed by a blank line or comment
-    const stateRegex = /const STATE = \{[\s\S]*?\n\};/;
-    if (!stateRegex.test(source)) {
-        throw new Error('Could not find STATE object in component file');
-    }
-    return source.replace(stateRegex, newState);
-}
 
 function startServer() {
     const server = createServer((req, res) => {
@@ -94,16 +85,14 @@ function startServer() {
             return;
         }
 
-        // Save state endpoint - patches STATE object in component
-        if (req.method === 'POST' && req.url === '/save-state') {
+        // Save logo endpoint - writes SVG directly to file
+        if (req.method === 'POST' && req.url === '/save-logo') {
             let body = '';
             req.on('data', chunk => body += chunk);
             req.on('end', () => {
                 try {
-                    const source = readFileSync(componentPath, 'utf-8');
-                    const patched = patchState(source, body);
-                    writeFileSync(componentPath, patched, 'utf-8');
-                    console.log(`✓ Patched STATE in ${componentPath}`);
+                    writeFileSync(logoPath, body, 'utf-8');
+                    console.log(`✓ Saved logo to ${logoPath}`);
 
                     // Rebuild
                     console.log('Rebuilding...');
@@ -156,7 +145,7 @@ function startServer() {
 
     server.listen(PORT, () => {
         console.log(`\n🚀 Dev server running at http://localhost:${PORT}`);
-        console.log(`   Save endpoint: POST /save-state`);
+        console.log(`   Save endpoint: POST /save-logo`);
         console.log(`   Watching src/ for changes...\n`);
     });
 

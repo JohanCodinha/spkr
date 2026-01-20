@@ -31,11 +31,7 @@ import {
     updatePeerCount,
     reset as resetConnectionStatus
 } from './connection-status.js';
-import { emit, initDebugTools, resetDummyPlayers, initLogoEditor } from './debug.js';
-import { registerCardHandLogo } from './card-hand-logo.js';
-
-// Register web components
-registerCardHandLogo();
+import { emit, initDebugTools, resetDummyPlayers } from './debug.js';
 
 // =============================================================================
 // LOCAL HELPERS
@@ -78,9 +74,6 @@ function init() {
 
     const { elements, setCtx, updateLocalPlayer } = getState();
     setCtx(elements.canvas.getContext('2d'));
-
-    // Initialize logo editor (debug only, for lobby)
-    initLogoEditor();
 
     // Initialize Matter.js engine
     initEngine();

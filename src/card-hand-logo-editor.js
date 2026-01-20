@@ -1,69 +1,73 @@
 /**
- * Card Hand Logo Editor Module
- * Debug-only editor UI - stripped from production builds via __DEBUG__ flag
- *
- * The editor works with STATE which has two parts:
- * - Editor inputs: cardHeight, anchor, fan, hover, shadow (what user tweaks)
- * - Precomputed values: viewBox, cardWidth, hoverTransform, cards[].transform (what component uses)
+ * Card Hand Logo Editor
+ * Standalone dev-only editor that manipulates the SVG directly.
+ * Reads config from data-editor attribute, updates SVG live, saves to disk.
  */
 
-// Card aspect ratio (must match card SVG viewBox)
+// Card SVG sources (imported at build time)
+import CARD_GOLD from './cards/card-gold.svg';
+import CARD_BLUE from './cards/card-blue.svg';
+import CARD_GREEN from './cards/card-green.svg';
+
+const CARD_SVGS = [CARD_GOLD, CARD_BLUE, CARD_GREEN];
+const CARD_NAMES = ['Gold', 'Blue', 'Green'];
 const CARD_ASPECT = 356 / 525.7;
 
+// =============================================================================
+// SVG COMPILATION
+// =============================================================================
+
 /**
- * Compute all derived values from editor inputs.
- * This is the core transformation: editor params -> component-ready values.
+ * Compute derived values from editor state
  */
-function computeDerivedValues(state) {
+function computeDerived(state) {
     const { cardHeight, anchor, fan, hover, cards } = state;
     const cardWidth = cardHeight * CARD_ASPECT;
     const cardCount = cards.length;
     const centerIndex = (cardCount - 1) / 2;
 
-    // Compute card transforms from fan parameters (no scaling - viewBox has fixed minimum)
-    cards.forEach((card, i) => {
+    // Compute card transforms
+    const cardTransforms = cards.map((card, i) => {
         const offset = i - centerIndex;
         const x = anchor.x + offset * fan.spacing;
         const y = anchor.y + Math.abs(offset) * fan.arc;
         const rotation = fan.rotation + (cardCount > 1
             ? offset * (fan.spread / (cardCount - 1))
             : 0);
-        card.transform = `translate(${x}, ${y}) rotate(${rotation})`;
+        return { x, y, rotation };
     });
 
     // Compute hover transform (CSS)
     const liftPercent = (hover.lift / cardHeight) * 100;
-    state.hoverTransform = `translateY(-${liftPercent.toFixed(1)}%) scale(${hover.scale})`;
+    const hoverTransform = `translateY(-${liftPercent.toFixed(1)}%) scale(${hover.scale})`;
 
-    // Store cardWidth
-    state.cardWidth = parseFloat(cardWidth.toFixed(2));
+    // Compute viewBox
+    const viewBox = computeViewBox(state, cardTransforms);
 
-    // Compute viewBox bounds (accounts for hover scale + lift)
-    state.viewBox = computeViewBox(state);
+    return {
+        cardWidth: parseFloat(cardWidth.toFixed(2)),
+        cardTransforms,
+        hoverTransform,
+        viewBox
+    };
 }
 
 /**
- * Compute viewBox string with fixed minimum size.
- * Small cards have padding, larger cards fill more of the space.
+ * Compute viewBox with fixed minimum size
  */
-function computeViewBox(state) {
-    const { cardHeight, anchor, fan, hover, cards } = state;
+function computeViewBox(state, cardTransforms) {
+    const { cardHeight, anchor, hover } = state;
     const cardWidth = cardHeight * CARD_ASPECT;
-    const cardCount = cards.length;
-    const centerIndex = (cardCount - 1) / 2;
 
-    // Fixed minimum viewBox dimensions (reference size for cardHeight=250)
     const MIN_WIDTH = 700;
     const MIN_HEIGHT = 450;
     const padding = 20;
 
-    // Account for hover: scale from bottom-center, lift upward
     const scaledWidth = cardWidth * hover.scale;
     const scaledHeight = cardHeight * hover.scale;
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-    // Card corners relative to bottom-center origin (before rotation)
     const corners = [
         [-scaledWidth / 2, -scaledHeight - hover.lift],
         [scaledWidth / 2, -scaledHeight - hover.lift],
@@ -71,38 +75,31 @@ function computeViewBox(state) {
         [scaledWidth / 2, 0]
     ];
 
-    cards.forEach((_, i) => {
-        const offset = i - centerIndex;
-        const cardX = offset * fan.spacing;
-        const cardY = Math.abs(offset) * fan.arc;
-        const rotation = fan.rotation + (cardCount > 1
-            ? offset * (fan.spread / (cardCount - 1))
-            : 0);
-
+    cardTransforms.forEach(({ x, y, rotation }) => {
         const rad = rotation * Math.PI / 180;
         const cos = Math.cos(rad);
         const sin = Math.sin(rad);
 
         corners.forEach(([cx, cy]) => {
+            // Rotate corner around card origin
             const rx = cx * cos - cy * sin;
             const ry = cx * sin + cy * cos;
-            const x = anchor.x + cardX + rx;
-            const y = anchor.y + cardY + ry;
+            // Translate to card position (x, y already include anchor offset)
+            const px = x + rx;
+            const py = y + ry;
 
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
+            minX = Math.min(minX, px);
+            minY = Math.min(minY, py);
+            maxX = Math.max(maxX, px);
+            maxY = Math.max(maxY, py);
         });
     });
 
-    // Use minimum dimensions or actual bounds (whichever is larger)
     const contentWidth = maxX - minX + 2 * padding;
     const contentHeight = maxY - minY + 2 * padding;
     const vbWidth = Math.max(contentWidth, MIN_WIDTH);
     const vbHeight = Math.max(contentHeight, MIN_HEIGHT);
 
-    // Center the content within the viewBox
     const contentCenterX = (minX + maxX) / 2;
     const contentCenterY = (minY + maxY) / 2;
     const vbMinX = contentCenterX - vbWidth / 2;
@@ -111,53 +108,67 @@ function computeViewBox(state) {
     return `${vbMinX.toFixed(2)} ${vbMinY.toFixed(2)} ${vbWidth.toFixed(2)} ${vbHeight.toFixed(2)}`;
 }
 
-// Extract colors from SVG string for shadow color palette
-function extractColorsFromSVG(svgString) {
-    const found = svgString.match(/#[0-9A-Fa-f]{6}/g);
-    return found ? [...new Set(found)].slice(0, 7) : ['#000000'];
+/**
+ * Generate complete SVG string from state
+ */
+function compileSVG(state) {
+    const derived = computeDerived(state);
+    const { cardHeight, shadow, cards } = state;
+    const { cardWidth, cardTransforms, viewBox } = derived;
+
+    // Build filters
+    const filters = cards.map((card, i) => `
+    <filter id="card-shadow-${i}" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="${shadow.dx}" dy="${shadow.dy}" stdDeviation="${shadow.blur}" flood-color="${card.shadowColor}" flood-opacity="${shadow.opacity}"/>
+    </filter>`).join('');
+
+    // Build card groups
+    const cardGroups = cards.map((card, i) => {
+        const t = cardTransforms[i];
+        const transform = `translate(${t.x}, ${t.y}) rotate(${t.rotation})`;
+        // Extract inner content from card SVG (remove outer <svg> wrapper)
+        const svgContent = CARD_SVGS[card.svgIndex]
+            .replace(/<svg[^>]*>/, '')
+            .replace(/<\/svg>/, '');
+        const originalViewBox = CARD_SVGS[card.svgIndex].match(/viewBox="([^"]+)"/)?.[1] || '0 0 356 525.7';
+
+        return `
+  <!-- Card ${i}: ${CARD_NAMES[card.svgIndex]} -->
+  <g class="card-container" transform="${transform}">
+    <g class="card" filter="url(#card-shadow-${i})">
+      <svg x="${-cardWidth / 2}" y="${-cardHeight}" width="${cardWidth}" height="${cardHeight}" viewBox="${originalViewBox}">
+        ${svgContent}
+      </svg>
+    </g>
+  </g>`;
+    }).join('\n');
+
+    // Format state for data-editor (compact JSON)
+    const editorData = JSON.stringify({
+        cardHeight: state.cardHeight,
+        anchor: state.anchor,
+        fan: state.fan,
+        hover: state.hover,
+        shadow: state.shadow,
+        cards: state.cards.map(c => ({ svgIndex: c.svgIndex, shadowColor: c.shadowColor }))
+    });
+
+    return `<svg
+  class="card-hand-logo"
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="${viewBox}"
+  data-editor='${editorData}'
+>
+  <defs>${filters}
+  </defs>
+${cardGroups}
+</svg>`;
 }
 
-// Card names for display
-const CARD_NAMES = ['Gold', 'Blue', 'Green'];
+// =============================================================================
+// EDITOR UI
+// =============================================================================
 
-// Generate STATE object source for patching into component file
-function generateStateSource(state) {
-    const cardsStr = state.cards.map(c =>
-        `        { svgIndex: ${c.svgIndex}, shadowColor: '${c.shadowColor}', transform: '${c.transform}' }`
-    ).join(',\n');
-
-    return `const STATE = {
-    // --- Editor inputs (used by editor to compute positions) ---
-    cardHeight: ${state.cardHeight},
-    anchor: { x: ${state.anchor.x}, y: ${state.anchor.y} },
-    fan: {
-        spread: ${state.fan.spread},        // total angle span from first to last card (degrees)
-        spacing: ${state.fan.spacing},       // horizontal spacing between adjacent cards
-        arc: ${state.fan.arc},           // vertical drop for outer cards (curve height)
-        rotation: ${state.fan.rotation}        // base rotation offset for entire fan
-    },
-    hover: {
-        scale: ${state.hover.scale},
-        lift: ${state.hover.lift}
-    },
-    shadow: {
-        dx: ${state.shadow.dx},
-        dy: ${state.shadow.dy},
-        blur: ${state.shadow.blur},
-        opacity: ${state.shadow.opacity}
-    },
-
-    // --- Precomputed by editor, used directly by component ---
-    viewBox: '${state.viewBox}',
-    cardWidth: ${state.cardWidth},
-    hoverTransform: '${state.hoverTransform}',
-    cards: [
-${cardsStr}
-    ]
-};`;
-}
-
-// Editor styles
 const STYLES = `
 .logo-editor-toggle {
     position: fixed;
@@ -359,6 +370,11 @@ const STYLES = `
 .logo-editor-toast.error { background: #ef4444; }
 `;
 
+function extractColorsFromSVG(svgString) {
+    const found = svgString.match(/#[0-9A-Fa-f]{6}/g);
+    return found ? [...new Set(found)].slice(0, 7) : ['#000000'];
+}
+
 function slider(key, label, value, min, max, step) {
     return `<div class="logo-editor-control">
         <label>${label} <span class="value">${value}</span></label>
@@ -367,17 +383,37 @@ function slider(key, label, value, min, max, step) {
 }
 
 /**
- * Render the editor UI
- * @param {HTMLElement} component - The card-hand-logo element
- * @param {Object} state - The shared STATE object (modified in place)
- * @param {string[]} svgs - Array of card SVG strings
+ * Initialize the editor
  */
-export function renderEditor(component, state, svgs) {
+export function initEditor() {
+    // Find the SVG on the page
+    const svg = document.querySelector('svg.card-hand-logo');
+    if (!svg) {
+        console.warn('[card-hand-logo-editor] No svg.card-hand-logo found on page');
+        return;
+    }
+
+    // Read state from data-editor attribute
+    const editorData = svg.dataset.editor;
+    if (!editorData) {
+        console.warn('[card-hand-logo-editor] No data-editor attribute found');
+        return;
+    }
+
+    let state;
+    try {
+        state = JSON.parse(editorData);
+    } catch (e) {
+        console.error('[card-hand-logo-editor] Failed to parse data-editor:', e);
+        return;
+    }
+
+    // Don't init twice
     if (document.getElementById('logo-editor-panel')) return;
 
-    // Extract color palette from SVGs
+    // Extract color palette from card SVGs
     const palette = new Set();
-    svgs.forEach(svg => extractColorsFromSVG(svg).forEach(c => palette.add(c)));
+    CARD_SVGS.forEach(s => extractColorsFromSVG(s).forEach(c => palette.add(c)));
     const colors = [...palette];
 
     // Inject styles
@@ -405,7 +441,7 @@ export function renderEditor(component, state, svgs) {
             <div class="logo-editor-section">
                 <h3>Fan Layout</h3>
                 ${slider('fan.spread', 'Angle Spread', state.fan.spread, 0, 90, 1)}
-                ${slider('fan.spacing', 'Spacing', state.fan.spacing, 0, 100, 5)}
+                ${slider('fan.spacing', 'Spacing', state.fan.spacing, 0, 150, 5)}
                 ${slider('fan.arc', 'Arc Height', state.fan.arc, -50, 100, 5)}
                 ${slider('fan.rotation', 'Rotation', state.fan.rotation, -45, 45, 1)}
             </div>
@@ -427,12 +463,12 @@ export function renderEditor(component, state, svgs) {
             <div class="logo-editor-section">
                 <h3>Hover</h3>
                 ${slider('hover.scale', 'Scale', state.hover.scale, 1, 1.5, 0.05)}
-                ${slider('hover.lift', 'Lift', state.hover.lift, 0, 50, 1)}
+                ${slider('hover.lift', 'Lift', state.hover.lift, 0, 80, 1)}
             </div>
         </div>
         <div class="logo-editor-footer">
-            <button class="logo-editor-btn logo-editor-btn-primary" id="editor-save">Save</button>
-            <button class="logo-editor-btn logo-editor-btn-secondary" id="editor-copy">Copy STATE</button>
+            <button class="logo-editor-btn logo-editor-btn-primary" id="editor-save">Save to Disk</button>
+            <button class="logo-editor-btn logo-editor-btn-secondary" id="editor-copy">Copy SVG</button>
         </div>
     `;
 
@@ -451,10 +487,13 @@ export function renderEditor(component, state, svgs) {
         toggle.classList.toggle('open', visible);
     };
 
-    // Update function - recomputes derived values and re-renders component
+    // Get the container holding the SVG
+    const svgContainer = svg.parentElement;
+
+    // Update function - recompile SVG and replace in DOM
     const update = () => {
-        computeDerivedValues(state);
-        component.render();
+        const newSVG = compileSVG(state);
+        svgContainer.innerHTML = newSVG;
     };
 
     // Helper to set nested property
@@ -477,7 +516,7 @@ export function renderEditor(component, state, svgs) {
         update();
     };
 
-    // Render card controls (called on init and after reorder)
+    // Render card controls
     const colorContainer = panel.querySelector('#editor-colors');
     const renderCardControls = () => {
         colorContainer.innerHTML = state.cards.map((c, i) => `
@@ -515,7 +554,7 @@ export function renderEditor(component, state, svgs) {
             };
         });
 
-        // Bind color swatches
+        // Bind swatches
         colorContainer.querySelectorAll('.logo-editor-swatch').forEach(swatch => {
             swatch.onclick = e => {
                 const idx = e.target.closest('.logo-editor-swatches').dataset.card;
@@ -527,10 +566,9 @@ export function renderEditor(component, state, svgs) {
         });
     };
 
-    // Initial render of card controls
     renderCardControls();
 
-    // All range sliders
+    // Bind sliders
     panel.querySelectorAll('input[type="range"][data-key]').forEach(input => {
         input.oninput = e => {
             const key = e.target.dataset.key;
@@ -541,7 +579,7 @@ export function renderEditor(component, state, svgs) {
         };
     });
 
-    // Show toast
+    // Toast helper
     const showToast = (msg, err) => {
         toast.textContent = msg;
         toast.classList.toggle('error', err);
@@ -549,14 +587,14 @@ export function renderEditor(component, state, svgs) {
         setTimeout(() => toast.classList.remove('visible'), 2000);
     };
 
-    // Save button
+    // Save button - POST compiled SVG to server
     panel.querySelector('#editor-save').onclick = async () => {
-        const stateSource = generateStateSource(state);
+        const svgContent = compileSVG(state);
         try {
-            const res = await fetch('/save-state', {
+            const res = await fetch('/save-logo', {
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: stateSource
+                headers: { 'Content-Type': 'image/svg+xml' },
+                body: svgContent
             });
             const data = await res.json();
             showToast(data.success ? 'Saved!' : (data.error || 'Failed'), !data.success);
@@ -568,10 +606,19 @@ export function renderEditor(component, state, svgs) {
     // Copy button
     panel.querySelector('#editor-copy').onclick = async () => {
         try {
-            await navigator.clipboard.writeText(generateStateSource(state));
+            await navigator.clipboard.writeText(compileSVG(state));
             showToast('Copied!');
         } catch {
             showToast('Copy failed', true);
         }
     };
+
+    console.log('[card-hand-logo-editor] Initialized');
+}
+
+// Auto-init when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEditor);
+} else {
+    initEditor();
 }

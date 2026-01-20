@@ -100,7 +100,7 @@ export function createRoom() {
 }
 
 export function joinRoom() {
-    const { elements } = getState();
+    const { elements, updateLocalPlayer } = getState();
     const code = elements.roomCodeInput.value.trim();
     if (!code) {
         showLobbyError('Please enter a room code');
@@ -109,8 +109,6 @@ export function joinRoom() {
 
     try {
         showLobbyStatus('Joining room...');
-
-        const { localPlayer, updateLocalPlayer } = getState();
 
         // Update local player info from lobby inputs
         // Use placeholder (random name) if input is empty

@@ -145,9 +145,9 @@ function setupEventListeners() {
 
     // Lobby color preview (don't save until room entry)
     elements.lobbyColorInput.addEventListener('input', (e) => {
-        const { elements } = getState();
+        const { elements, updateLocalPlayer } = getState();
         elements.lobbyColorPreview.style.backgroundColor = e.target.value;
-        getState().updateLocalPlayer({ color: e.target.value });
+        updateLocalPlayer({ color: e.target.value });
     });
 
     // Game header buttons
@@ -321,14 +321,15 @@ function setupMultiplayerHandlers() {
 
     mp.onPeerLeave((peerId) => {
         console.log('Peer left:', peerId);
-        const { deletePlayer, filterCards, players } = getState();
+        const { deletePlayer, filterCards } = getState();
 
         // Remove player and their cards
         deletePlayer(peerId);
         filterCards(c => c.player.id !== peerId);
 
-        // Update connection status
-        updatePeerCount(Object.keys(getState().players).length);
+        // Update connection status - need fresh state after deletions
+        const { players } = getState();
+        updatePeerCount(Object.keys(players).length);
 
         checkState();
     });
@@ -350,8 +351,11 @@ function setupMultiplayerHandlers() {
 
         // Update connection status when a new player joins
         if (isNewPlayer) {
-            updatePeerCount(Object.keys(getState().players).length);
-            emit('peerJoined', { peerId, count: Object.keys(getState().players).length + 1 }); // +1 for local player
+            // Need fresh state after setPlayer mutation
+            const updatedPlayers = getState().players;
+            const playerCount = Object.keys(updatedPlayers).length;
+            updatePeerCount(playerCount);
+            emit('peerJoined', { peerId, count: playerCount + 1 }); // +1 for local player
         }
 
         updatePlayerPositions();
@@ -669,6 +673,7 @@ if (__DEBUG__) {
             if (!isObserver) {
                 spawnCard(player, vote);
             }
+            // Need fresh state after setPlayer mutation
             updatePeerCount(Object.keys(getState().players).length);
             checkState();
         },

@@ -10,6 +10,8 @@ on:
       - 'build.js'
       - 'package.json'
       - 'playwright.config.js'
+      - 'wrangler.toml'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
     paths:

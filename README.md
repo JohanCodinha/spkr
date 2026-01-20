@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://tools.joadn.com/spkr/"><strong>Try it live</strong></a> ·
+  <a href="https://eval.work"><strong>Try it live</strong></a> ·
   <a href="https://github.com/JohanCodinha/spkr/releases/latest/download/index.html"><strong>Download</strong></a>
 </p>
 
@@ -43,7 +43,7 @@
 
 ### Use the Hosted Version
 
-1. Go to [tools.joadn.com/spkr/](https://tools.joadn.com/spkr/)
+1. Go to [eval.work](https://eval.work)
 2. Enter your name and pick a color
 3. Click **Create Room**
 4. Share the room link with your team
@@ -107,7 +107,7 @@ git tag v1.2.3
 git push --tags
 ```
 
-The release workflow will run tests, generate screenshots, create a GitHub Release, and deploy to tools.joadn.com.
+The release workflow will run tests, generate screenshots, create a GitHub Release, and deploy to eval.work.
 
 ## License
 

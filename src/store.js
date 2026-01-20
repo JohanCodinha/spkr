@@ -131,6 +131,29 @@ export const store = createStore(
             getPlayerCount: () => {
                 const state = get();
                 return Object.keys(state.players).length + 1;
+            },
+
+            // Get all voters (non-observers)
+            getVoters: () => {
+                const state = get();
+                return [state.localPlayer, ...Object.values(state.players)].filter(p => !p.isObserver);
+            },
+
+            // Get count of players who have voted
+            getVotedCount: () => {
+                return get().getVoters().filter(p => p.voted).length;
+            },
+
+            // Check if all voters have voted
+            areAllVotesIn: () => {
+                const voters = get().getVoters();
+                return voters.length > 0 && voters.every(p => p.voted);
+            },
+
+            // Check if observer can reveal (is observer and there are cards)
+            canObserverReveal: () => {
+                const state = get();
+                return state.localPlayer.isObserver && state.cards.length > 0;
             }
         }))
     )

@@ -465,21 +465,13 @@ function userVote(val) {
 }
 
 function checkState() {
-    const { getAllPlayers, localPlayer, cards, elements } = getState();
-    const allPlayers = getAllPlayers();
-    const voters = allPlayers.filter(p => !p.isObserver);
-    const votedCount = voters.filter(p => p.voted).length;
-    const totalVoters = voters.length;
+    const { areAllVotesIn, canObserverReveal, elements, getVotedCount } = getState();
 
-    // Show reveal button if all voters have voted, or if local player is observer and votes exist
-    const allVotersVoted = votedCount === totalVoters && totalVoters > 0;
-    const observerCanReveal = localPlayer.isObserver && cards.length > 0;
-
-    if (allVotersVoted || observerCanReveal) {
+    if (areAllVotesIn() || canObserverReveal()) {
         elements.revealBtn.classList.remove('hidden');
         elements.revealBtn.classList.add('scale-in');
-        if (allVotersVoted) {
-            emit('allVotesIn', { count: votedCount });
+        if (areAllVotesIn()) {
+            emit('allVotesIn', { count: getVotedCount() });
         }
     }
 }

@@ -121,6 +121,24 @@ export const store = createStore(
             setElements: (elements) => set({ elements }),
 
             // =================================================================
+            // GAME ACTIONS
+            // =================================================================
+            reveal: () => set({ isRevealed: true }),
+
+            resetGame: () => set((state) => {
+                state.isRevealed = false;
+                state.revealComplete = false;
+                state.cards = [];
+                state.particles = [];
+                state.localPlayer.voted = false;
+                state.localPlayer.vote = null;
+                Object.values(state.players).forEach(p => {
+                    p.voted = false;
+                    p.vote = null;
+                });
+            }),
+
+            // =================================================================
             // HELPERS
             // =================================================================
             getAllPlayers: () => {

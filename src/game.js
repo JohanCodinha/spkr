@@ -500,8 +500,8 @@ function positionCardsForReveal() {
 }
 
 function doReveal() {
-    const { elements, setIsRevealed } = getState();
-    setIsRevealed(true);
+    const { elements, reveal } = getState();
+    reveal();
     elements.revealBtn.classList.add('hidden');
     elements.deck.classList.add('revealed');
 
@@ -521,26 +521,10 @@ function doReset() {
 }
 
 function resetGameState() {
-    const {
-        setIsRevealed, setRevealComplete, setCards, setParticles,
-        updateLocalPlayer, players, setPlayer, elements, localPlayer
-    } = getState();
-
-    setIsRevealed(false);
-    setRevealComplete(false);
+    const { resetGame, elements, localPlayer } = getState();
 
     clearEngine();
-
-    setCards([]);
-    setParticles([]);
-    updateLocalPlayer({ voted: false, vote: null });
-
-    // Reset all remote players' voted status
-    Object.entries(players).forEach(([id, player]) => {
-        player.voted = false;
-        player.vote = null;
-        setPlayer(id, player);
-    });
+    resetGame();
 
     if (elements.revealBtn) {
         elements.revealBtn.classList.add('hidden');

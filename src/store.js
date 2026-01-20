@@ -4,11 +4,9 @@
 
 import { createStore } from 'zustand/vanilla';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { immer } from 'zustand/middleware/immer';
 
 export const store = createStore(
-    subscribeWithSelector(
-        immer((set, get) => ({
+    subscribeWithSelector((set, get) => ({
             // =================================================================
             // GAME STATE
             // =================================================================
@@ -51,21 +49,17 @@ export const store = createStore(
             setCards: (cards) => set({ cards }),
 
             pushCard: (card) =>
-                set((state) => {
-                    state.cards.push(card);
-                }),
+                set((state) => ({ cards: [...state.cards, card] })),
 
             filterCards: (predicate) =>
-                set((state) => {
-                    state.cards = state.cards.filter(predicate);
-                }),
+                set((state) => ({ cards: state.cards.filter(predicate) })),
 
             updateCard: (index, updates) =>
-                set((state) => {
-                    if (state.cards[index]) {
-                        Object.assign(state.cards[index], updates);
-                    }
-                }),
+                set((state) => ({
+                    cards: state.cards.map((card, i) =>
+                        i === index ? { ...card, ...updates } : card
+                    )
+                })),
 
             // =================================================================
             // PARTICLE ACTIONS
@@ -91,25 +85,26 @@ export const store = createStore(
             setLocalPlayer: (localPlayer) => set({ localPlayer }),
 
             updateLocalPlayer: (updates) =>
-                set((state) => {
-                    Object.assign(state.localPlayer, updates);
-                }),
+                set((state) => ({
+                    localPlayer: { ...state.localPlayer, ...updates }
+                })),
 
             setPlayer: (id, info) =>
-                set((state) => {
-                    state.players[id] = info;
-                }),
+                set((state) => ({
+                    players: { ...state.players, [id]: info }
+                })),
 
             updatePlayer: (id, updates) =>
-                set((state) => {
-                    if (state.players[id]) {
-                        Object.assign(state.players[id], updates);
-                    }
-                }),
+                set((state) =>
+                    state.players[id]
+                        ? { players: { ...state.players, [id]: { ...state.players[id], ...updates } } }
+                        : {}
+                ),
 
             deletePlayer: (id) =>
                 set((state) => {
-                    delete state.players[id];
+                    const { [id]: _, ...rest } = state.players;
+                    return { players: rest };
                 }),
 
             clearPlayers: () => set({ players: {} }),
@@ -125,18 +120,16 @@ export const store = createStore(
             // =================================================================
             reveal: () => set({ isRevealed: true }),
 
-            resetGame: () => set((state) => {
-                state.isRevealed = false;
-                state.revealComplete = false;
-                state.cards = [];
-                state.particles = [];
-                state.localPlayer.voted = false;
-                state.localPlayer.vote = null;
-                Object.values(state.players).forEach(p => {
-                    p.voted = false;
-                    p.vote = null;
-                });
-            }),
+            resetGame: () => set((state) => ({
+                isRevealed: false,
+                revealComplete: false,
+                cards: [],
+                particles: [],
+                localPlayer: { ...state.localPlayer, voted: false, vote: null },
+                players: Object.fromEntries(
+                    Object.entries(state.players).map(([id, p]) => [id, { ...p, voted: false, vote: null }])
+                )
+            })),
 
             // =================================================================
             // HELPERS
@@ -174,7 +167,6 @@ export const store = createStore(
                 return state.localPlayer.isObserver && state.cards.length > 0;
             }
         }))
-    )
 );
 
 // Convenience exports for direct access

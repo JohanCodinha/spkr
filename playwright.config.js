@@ -14,7 +14,7 @@ export default defineConfig({
   retries: isCI ? 2 : 1, // More retries in CI for network flakiness
   reporter: isCI
     ? [['github'], ['html', { open: 'never' }]]
-    : [['list'], ['html', { open: 'never' }]],
+    : [['list'], ['html', { open: 'on-failure' }]],
   use: {
     headless: true,
     viewport: { width: 1280, height: 720 },

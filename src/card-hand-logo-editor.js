@@ -1,6 +1,6 @@
 /**
- * Card Hand Logo Editor
- * Standalone dev-only editor that manipulates the SVG directly.
+ * Card Hand Logo Editor Web Component
+ * Dev-only editor that manipulates the SVG directly.
  * Reads config from data-editor attribute, updates SVG live, saves to disk.
  */
 
@@ -11,6 +11,7 @@ import CARD_GREEN from './cards/card-green.svg';
 
 const CARD_SVGS = [CARD_GOLD, CARD_BLUE, CARD_GREEN];
 const CARD_NAMES = ['Gold', 'Blue', 'Green'];
+
 const CARD_ASPECT = 356 / 525.7;
 
 // =============================================================================
@@ -21,27 +22,24 @@ const CARD_ASPECT = 356 / 525.7;
  * Compute derived values from editor state
  */
 function computeDerived(state) {
-    const { cardHeight, anchor, fan, hover, cards } = state;
+    const { cardHeight, fan, hover, cards } = state;
     const cardWidth = cardHeight * CARD_ASPECT;
     const cardCount = cards.length;
     const centerIndex = (cardCount - 1) / 2;
 
-    // Compute card transforms
     const cardTransforms = cards.map((card, i) => {
         const offset = i - centerIndex;
-        const x = anchor.x + offset * fan.spacing;
-        const y = anchor.y + Math.abs(offset) * fan.arc;
+        const x = offset * fan.spacing;
+        const y = Math.abs(offset) * fan.arc;
         const rotation = fan.rotation + (cardCount > 1
             ? offset * (fan.spread / (cardCount - 1))
             : 0);
         return { x, y, rotation };
     });
 
-    // Compute hover transform (CSS)
     const liftPercent = (hover.lift / cardHeight) * 100;
     const hoverTransform = `translateY(-${liftPercent.toFixed(1)}%) scale(${hover.scale})`;
 
-    // Compute viewBox
     const viewBox = computeViewBox(state, cardTransforms);
 
     return {
@@ -56,7 +54,7 @@ function computeDerived(state) {
  * Compute viewBox with fixed minimum size
  */
 function computeViewBox(state, cardTransforms) {
-    const { cardHeight, anchor, hover } = state;
+    const { cardHeight, hover } = state;
     const cardWidth = cardHeight * CARD_ASPECT;
 
     const MIN_WIDTH = 700;
@@ -81,10 +79,8 @@ function computeViewBox(state, cardTransforms) {
         const sin = Math.sin(rad);
 
         corners.forEach(([cx, cy]) => {
-            // Rotate corner around card origin
             const rx = cx * cos - cy * sin;
             const ry = cx * sin + cy * cos;
-            // Translate to card position (x, y already include anchor offset)
             const px = x + rx;
             const py = y + ry;
 
@@ -116,37 +112,30 @@ function compileSVG(state) {
     const { cardHeight, shadow, cards } = state;
     const { cardWidth, cardTransforms, viewBox } = derived;
 
-    // Build filters
     const filters = cards.map((card, i) => `
     <filter id="card-shadow-${i}" x="-50%" y="-50%" width="200%" height="200%">
       <feDropShadow dx="${shadow.dx}" dy="${shadow.dy}" stdDeviation="${shadow.blur}" flood-color="${card.shadowColor}" flood-opacity="${shadow.opacity}"/>
     </filter>`).join('');
 
-    // Build card groups
     const cardGroups = cards.map((card, i) => {
         const t = cardTransforms[i];
         const transform = `translate(${t.x}, ${t.y}) rotate(${t.rotation})`;
-        // Extract inner content from card SVG (remove outer <svg> wrapper)
-        const svgContent = CARD_SVGS[card.svgIndex]
-            .replace(/<svg[^>]*>/, '')
-            .replace(/<\/svg>/, '');
-        const originalViewBox = CARD_SVGS[card.svgIndex].match(/viewBox="([^"]+)"/)?.[1] || '0 0 356 525.7';
+        const cardSVG = CARD_SVGS[card.svgIndex].replace(
+            '<svg',
+            `<svg x="${-cardWidth / 2}" y="${-cardHeight}" width="${cardWidth}" height="${cardHeight}"`
+        );
 
         return `
   <!-- Card ${i}: ${CARD_NAMES[card.svgIndex]} -->
   <g class="card-container" transform="${transform}">
     <g class="card" filter="url(#card-shadow-${i})">
-      <svg x="${-cardWidth / 2}" y="${-cardHeight}" width="${cardWidth}" height="${cardHeight}" viewBox="${originalViewBox}">
-        ${svgContent}
-      </svg>
+      ${cardSVG}
     </g>
   </g>`;
     }).join('\n');
 
-    // Format state for data-editor (compact JSON)
     const editorData = JSON.stringify({
         cardHeight: state.cardHeight,
-        anchor: state.anchor,
         fan: state.fan,
         hover: state.hover,
         shadow: state.shadow,
@@ -166,11 +155,15 @@ ${cardGroups}
 }
 
 // =============================================================================
-// EDITOR UI
+// WEB COMPONENT
 // =============================================================================
 
 const STYLES = `
-.logo-editor-toggle {
+:host {
+    display: contents;
+}
+
+.toggle {
     position: fixed;
     top: 50%;
     left: 0;
@@ -188,10 +181,10 @@ const STYLES = `
     transition: left 0.3s ease, background 0.2s;
     font-family: system-ui, sans-serif;
 }
-.logo-editor-toggle:hover { background: #f59e0b; }
-.logo-editor-toggle.open { left: 320px; }
+.toggle:hover { background: #f59e0b; }
+.toggle.open { left: 320px; }
 
-.logo-editor-panel {
+.panel {
     position: fixed;
     top: 0;
     left: 0;
@@ -207,29 +200,29 @@ const STYLES = `
     flex-direction: column;
     overflow: hidden;
 }
-.logo-editor-panel.visible { transform: translateX(0); }
+.panel.visible { transform: translateX(0); }
 
-.logo-editor-header {
+.header {
     padding: 12px;
     border-bottom: 1px solid #374151;
     background: #111827;
 }
-.logo-editor-header h2 {
+.header h2 {
     margin: 0;
     color: #fbbf24;
     font-size: 14px;
 }
 
-.logo-editor-content {
+.content {
     flex: 1;
     overflow-y: auto;
     padding: 12px;
 }
 
-.logo-editor-section {
+.section {
     margin-bottom: 16px;
 }
-.logo-editor-section h3 {
+.section h3 {
     margin: 0 0 8px 0;
     color: #6b7280;
     font-size: 10px;
@@ -237,28 +230,28 @@ const STYLES = `
     text-transform: uppercase;
 }
 
-.logo-editor-control {
+.control {
     margin-bottom: 8px;
 }
-.logo-editor-control label {
+.control label {
     display: flex;
     justify-content: space-between;
     color: #d1d5db;
     font-size: 11px;
     margin-bottom: 2px;
 }
-.logo-editor-control .value {
+.control .value {
     color: #fbbf24;
     font-family: monospace;
 }
-.logo-editor-control input[type="range"] {
+.control input[type="range"] {
     width: 100%;
     height: 4px;
     background: #374151;
     border-radius: 2px;
     appearance: none;
 }
-.logo-editor-control input[type="range"]::-webkit-slider-thumb {
+.control input[type="range"]::-webkit-slider-thumb {
     appearance: none;
     width: 12px;
     height: 12px;
@@ -266,34 +259,35 @@ const STYLES = `
     border-radius: 50%;
     cursor: pointer;
 }
-.logo-editor-card-item {
+
+.card-item {
     background: #374151;
     border-radius: 4px;
     padding: 8px;
     margin-bottom: 6px;
 }
-.logo-editor-card-header {
+.card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 8px;
 }
-.logo-editor-card-left {
+.card-left {
     display: flex;
     align-items: center;
     gap: 8px;
 }
-.logo-editor-card-header span {
+.card-header span {
     color: #e5e7eb;
     font-size: 11px;
     font-weight: 600;
 }
-.logo-editor-reorder {
+.reorder {
     display: flex;
     flex-direction: column;
     gap: 2px;
 }
-.logo-editor-reorder button {
+.reorder button {
     background: #4b5563;
     border: none;
     color: #9ca3af;
@@ -303,34 +297,34 @@ const STYLES = `
     border-radius: 2px;
     cursor: pointer;
 }
-.logo-editor-reorder button:hover:not(:disabled) {
+.reorder button:hover:not(:disabled) {
     background: #6b7280;
     color: #fff;
 }
-.logo-editor-reorder button:disabled {
+.reorder button:disabled {
     opacity: 0.3;
     cursor: default;
 }
-.logo-editor-swatches {
+.swatches {
     display: flex;
     gap: 3px;
     margin-top: 6px;
 }
-.logo-editor-swatch {
+.swatch {
     width: 14px;
     height: 14px;
     border-radius: 50%;
     border: 1px solid #6b7280;
     cursor: pointer;
 }
-.logo-editor-swatch:hover { transform: scale(1.2); }
+.swatch:hover { transform: scale(1.2); }
 
-.logo-editor-footer {
+.footer {
     padding: 12px;
     border-top: 1px solid #374151;
     background: #111827;
 }
-.logo-editor-btn {
+.btn {
     width: 100%;
     padding: 8px;
     border: none;
@@ -340,19 +334,19 @@ const STYLES = `
     cursor: pointer;
     margin-bottom: 6px;
 }
-.logo-editor-btn:last-child { margin-bottom: 0; }
-.logo-editor-btn-primary {
+.btn:last-child { margin-bottom: 0; }
+.btn-primary {
     background: #22c55e;
     color: white;
 }
-.logo-editor-btn-primary:hover { background: #16a34a; }
-.logo-editor-btn-secondary {
+.btn-primary:hover { background: #16a34a; }
+.btn-secondary {
     background: #374151;
     color: #e5e7eb;
 }
-.logo-editor-btn-secondary:hover { background: #4b5563; }
+.btn-secondary:hover { background: #4b5563; }
 
-.logo-editor-toast {
+.toast {
     position: fixed;
     bottom: 20px;
     left: 50%;
@@ -366,8 +360,8 @@ const STYLES = `
     opacity: 0;
     transition: opacity 0.3s;
 }
-.logo-editor-toast.visible { opacity: 1; }
-.logo-editor-toast.error { background: #ef4444; }
+.toast.visible { opacity: 1; }
+.toast.error { background: #ef4444; }
 `;
 
 function extractColorsFromSVG(svgString) {
@@ -376,154 +370,112 @@ function extractColorsFromSVG(svgString) {
 }
 
 function slider(key, label, value, min, max, step) {
-    return `<div class="logo-editor-control">
+    return `<div class="control">
         <label>${label} <span class="value">${value}</span></label>
         <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${value}">
     </div>`;
 }
 
-/**
- * Initialize the editor
- */
-export function initEditor() {
-    // Find the SVG on the page
-    const svg = document.querySelector('svg.card-hand-logo');
-    if (!svg) {
-        console.warn('[card-hand-logo-editor] No svg.card-hand-logo found on page');
-        return;
+class LogoEditor extends HTMLElement {
+    constructor() {
+        super();
+        this.attachShadow({ mode: 'open' });
+        this.state = null;
+        this.svgContainer = null;
+        this.colors = [];
     }
 
-    // Read state from data-editor attribute
-    const editorData = svg.dataset.editor;
-    if (!editorData) {
-        console.warn('[card-hand-logo-editor] No data-editor attribute found');
-        return;
-    }
-
-    let state;
-    try {
-        state = JSON.parse(editorData);
-    } catch (e) {
-        console.error('[card-hand-logo-editor] Failed to parse data-editor:', e);
-        return;
-    }
-
-    // Don't init twice
-    if (document.getElementById('logo-editor-panel')) return;
-
-    // Extract color palette from card SVGs
-    const palette = new Set();
-    CARD_SVGS.forEach(s => extractColorsFromSVG(s).forEach(c => palette.add(c)));
-    const colors = [...palette];
-
-    // Inject styles
-    if (!document.getElementById('logo-editor-styles')) {
-        const style = document.createElement('style');
-        style.id = 'logo-editor-styles';
-        style.textContent = STYLES;
-        document.head.appendChild(style);
-    }
-
-    // Toggle button
-    const toggle = document.createElement('button');
-    toggle.id = 'logo-editor-toggle';
-    toggle.className = 'logo-editor-toggle';
-    toggle.textContent = 'Editor';
-
-    // Panel
-    const panel = document.createElement('div');
-    panel.id = 'logo-editor-panel';
-    panel.className = 'logo-editor-panel';
-
-    panel.innerHTML = `
-        <div class="logo-editor-header"><h2>Card Hand Editor</h2></div>
-        <div class="logo-editor-content">
-            <div class="logo-editor-section">
-                <h3>Fan Layout</h3>
-                ${slider('fan.spread', 'Angle Spread', state.fan.spread, 0, 90, 1)}
-                ${slider('fan.spacing', 'Spacing', state.fan.spacing, 0, 150, 5)}
-                ${slider('fan.arc', 'Arc Height', state.fan.arc, -50, 100, 5)}
-                ${slider('fan.rotation', 'Rotation', state.fan.rotation, -45, 45, 1)}
-            </div>
-            <div class="logo-editor-section">
-                <h3>Card Size</h3>
-                ${slider('cardHeight', 'Height', state.cardHeight, 80, 500, 5)}
-            </div>
-            <div class="logo-editor-section">
-                <h3>Shadow</h3>
-                ${slider('shadow.dx', 'X Offset', state.shadow.dx, -20, 20, 1)}
-                ${slider('shadow.dy', 'Y Offset', state.shadow.dy, -20, 20, 1)}
-                ${slider('shadow.blur', 'Blur', state.shadow.blur, 0, 20, 1)}
-                ${slider('shadow.opacity', 'Opacity', state.shadow.opacity, 0, 1, 0.05)}
-            </div>
-            <div class="logo-editor-section">
-                <h3>Cards</h3>
-                <div id="editor-colors"></div>
-            </div>
-            <div class="logo-editor-section">
-                <h3>Hover</h3>
-                ${slider('hover.scale', 'Scale', state.hover.scale, 1, 1.5, 0.05)}
-                ${slider('hover.lift', 'Lift', state.hover.lift, 0, 80, 1)}
-            </div>
-        </div>
-        <div class="logo-editor-footer">
-            <button class="logo-editor-btn logo-editor-btn-primary" id="editor-save">Save to Disk</button>
-            <button class="logo-editor-btn logo-editor-btn-secondary" id="editor-copy">Copy SVG</button>
-        </div>
-    `;
-
-    // Toast
-    const toast = document.createElement('div');
-    toast.id = 'logo-editor-toast';
-    toast.className = 'logo-editor-toast';
-
-    document.body.append(panel, toggle, toast);
-
-    // Toggle visibility
-    let visible = false;
-    toggle.onclick = () => {
-        visible = !visible;
-        panel.classList.toggle('visible', visible);
-        toggle.classList.toggle('open', visible);
-    };
-
-    // Get the container holding the SVG
-    const svgContainer = svg.parentElement;
-
-    // Update function - recompile SVG and replace in DOM
-    const update = () => {
-        const newSVG = compileSVG(state);
-        svgContainer.innerHTML = newSVG;
-    };
-
-    // Helper to set nested property
-    const setNested = (key, value) => {
-        const parts = key.split('.');
-        if (parts.length === 2) {
-            state[parts[0]][parts[1]] = value;
-        } else {
-            state[key] = value;
+    connectedCallback() {
+        // Find the SVG in the light DOM
+        const svg = document.querySelector('svg.card-hand-logo');
+        if (!svg) {
+            console.warn('[logo-editor] No svg.card-hand-logo found on page');
+            return;
         }
-    };
 
-    // Move card in array
-    const moveCard = (index, direction) => {
-        const newIndex = index + direction;
-        if (newIndex < 0 || newIndex >= state.cards.length) return;
-        [state.cards[index], state.cards[newIndex]] =
-            [state.cards[newIndex], state.cards[index]];
-        renderCardControls();
-        update();
-    };
+        const editorData = svg.dataset.editor;
+        if (!editorData) {
+            console.warn('[logo-editor] No data-editor attribute found');
+            return;
+        }
 
-    // Render card controls
-    const colorContainer = panel.querySelector('#editor-colors');
-    const renderCardControls = () => {
-        colorContainer.innerHTML = state.cards.map((c, i) => `
-            <div class="logo-editor-card-item">
-                <div class="logo-editor-card-header">
-                    <div class="logo-editor-card-left">
-                        <div class="logo-editor-reorder">
+        try {
+            this.state = JSON.parse(editorData);
+        } catch (e) {
+            console.error('[logo-editor] Failed to parse data-editor:', e);
+            return;
+        }
+
+        this.svgContainer = svg.parentElement;
+
+        // Extract color palette from card SVGs
+        const palette = new Set();
+        CARD_SVGS.forEach(s => extractColorsFromSVG(s).forEach(c => palette.add(c)));
+        this.colors = [...palette];
+
+        this.render();
+        this.bindEvents();
+
+        console.log('[logo-editor] Initialized');
+    }
+
+    render() {
+        const { state, colors } = this;
+
+        this.shadowRoot.innerHTML = `
+            <style>${STYLES}</style>
+            <button class="toggle">Editor</button>
+            <div class="panel">
+                <div class="header"><h2>Card Hand Editor</h2></div>
+                <div class="content">
+                    <div class="section">
+                        <h3>Fan Layout</h3>
+                        ${slider('fan.spread', 'Angle Spread', state.fan.spread, 0, 90, 1)}
+                        ${slider('fan.spacing', 'Spacing', state.fan.spacing, 0, 150, 5)}
+                        ${slider('fan.arc', 'Arc Height', state.fan.arc, -50, 100, 5)}
+                        ${slider('fan.rotation', 'Rotation', state.fan.rotation, -45, 45, 1)}
+                    </div>
+                    <div class="section">
+                        <h3>Card Size</h3>
+                        ${slider('cardHeight', 'Height', state.cardHeight, 80, 500, 5)}
+                    </div>
+                    <div class="section">
+                        <h3>Shadow</h3>
+                        ${slider('shadow.dx', 'X Offset', state.shadow.dx, -20, 20, 1)}
+                        ${slider('shadow.dy', 'Y Offset', state.shadow.dy, -20, 20, 1)}
+                        ${slider('shadow.blur', 'Blur', state.shadow.blur, 0, 20, 1)}
+                        ${slider('shadow.opacity', 'Opacity', state.shadow.opacity, 0, 1, 0.05)}
+                    </div>
+                    <div class="section">
+                        <h3>Cards</h3>
+                        <div class="cards-container"></div>
+                    </div>
+                    <div class="section">
+                        <h3>Hover</h3>
+                        ${slider('hover.scale', 'Scale', state.hover.scale, 1, 1.5, 0.05)}
+                        ${slider('hover.lift', 'Lift', state.hover.lift, 0, 80, 1)}
+                    </div>
+                </div>
+                <div class="footer">
+                    <button class="btn btn-primary" data-action="save">Save to Disk</button>
+                    <button class="btn btn-secondary" data-action="copy">Copy SVG</button>
+                </div>
+            </div>
+            <div class="toast"></div>
+        `;
+
+        this.renderCardControls();
+    }
+
+    renderCardControls() {
+        const { state, colors } = this;
+        const container = this.shadowRoot.querySelector('.cards-container');
+
+        container.innerHTML = state.cards.map((c, i) => `
+            <div class="card-item">
+                <div class="card-header">
+                    <div class="card-left">
+                        <div class="reorder">
                             <button data-move="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>&#9650;</button>
                             <button data-move="${i}" data-dir="1" ${i === state.cards.length - 1 ? 'disabled' : ''}>&#9660;</button>
                         </div>
@@ -531,65 +483,102 @@ export function initEditor() {
                     </div>
                     <input type="color" data-card="${i}" value="${c.shadowColor}">
                 </div>
-                <div class="logo-editor-swatches" data-card="${i}">
-                    ${colors.map(col => `<div class="logo-editor-swatch" style="background:${col}" data-color="${col}"></div>`).join('')}
+                <div class="swatches" data-card="${i}">
+                    ${colors.map(col => `<div class="swatch" style="background:${col}" data-color="${col}"></div>`).join('')}
                 </div>
             </div>
         `).join('');
 
         // Bind reorder buttons
-        colorContainer.querySelectorAll('button[data-move]').forEach(btn => {
+        container.querySelectorAll('button[data-move]').forEach(btn => {
             btn.onclick = e => {
                 const idx = parseInt(e.target.dataset.move);
                 const dir = parseInt(e.target.dataset.dir);
-                moveCard(idx, dir);
+                this.moveCard(idx, dir);
             };
         });
 
         // Bind color pickers
-        colorContainer.querySelectorAll('input[type="color"]').forEach(input => {
+        container.querySelectorAll('input[type="color"]').forEach(input => {
             input.oninput = e => {
-                state.cards[e.target.dataset.card].shadowColor = e.target.value;
-                update();
+                this.state.cards[e.target.dataset.card].shadowColor = e.target.value;
+                this.updateSVG();
             };
         });
 
         // Bind swatches
-        colorContainer.querySelectorAll('.logo-editor-swatch').forEach(swatch => {
+        container.querySelectorAll('.swatch').forEach(swatch => {
             swatch.onclick = e => {
-                const idx = e.target.closest('.logo-editor-swatches').dataset.card;
+                const idx = e.target.closest('.swatches').dataset.card;
                 const color = e.target.dataset.color;
-                state.cards[idx].shadowColor = color;
-                colorContainer.querySelector(`input[data-card="${idx}"]`).value = color;
-                update();
+                this.state.cards[idx].shadowColor = color;
+                container.querySelector(`input[data-card="${idx}"]`).value = color;
+                this.updateSVG();
             };
         });
-    };
+    }
 
-    renderCardControls();
+    bindEvents() {
+        const toggle = this.shadowRoot.querySelector('.toggle');
+        const panel = this.shadowRoot.querySelector('.panel');
 
-    // Bind sliders
-    panel.querySelectorAll('input[type="range"][data-key]').forEach(input => {
-        input.oninput = e => {
-            const key = e.target.dataset.key;
-            const value = parseFloat(e.target.value);
-            setNested(key, value);
-            e.target.parentElement.querySelector('.value').textContent = e.target.value;
-            update();
+        // Toggle visibility
+        toggle.onclick = () => {
+            const visible = panel.classList.toggle('visible');
+            toggle.classList.toggle('open', visible);
         };
-    });
 
-    // Toast helper
-    const showToast = (msg, err) => {
+        // Bind sliders
+        this.shadowRoot.querySelectorAll('input[type="range"][data-key]').forEach(input => {
+            input.oninput = e => {
+                const key = e.target.dataset.key;
+                const value = parseFloat(e.target.value);
+                this.setNested(key, value);
+                e.target.parentElement.querySelector('.value').textContent = e.target.value;
+                this.updateSVG();
+            };
+        });
+
+        // Save button
+        this.shadowRoot.querySelector('[data-action="save"]').onclick = () => this.save();
+
+        // Copy button
+        this.shadowRoot.querySelector('[data-action="copy"]').onclick = () => this.copy();
+    }
+
+    setNested(key, value) {
+        const parts = key.split('.');
+        if (parts.length === 2) {
+            this.state[parts[0]][parts[1]] = value;
+        } else {
+            this.state[key] = value;
+        }
+    }
+
+    moveCard(index, direction) {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= this.state.cards.length) return;
+        [this.state.cards[index], this.state.cards[newIndex]] =
+            [this.state.cards[newIndex], this.state.cards[index]];
+        this.renderCardControls();
+        this.updateSVG();
+    }
+
+    updateSVG() {
+        const newSVG = compileSVG(this.state);
+        this.svgContainer.innerHTML = newSVG;
+    }
+
+    showToast(msg, isError = false) {
+        const toast = this.shadowRoot.querySelector('.toast');
         toast.textContent = msg;
-        toast.classList.toggle('error', err);
+        toast.classList.toggle('error', isError);
         toast.classList.add('visible');
         setTimeout(() => toast.classList.remove('visible'), 2000);
-    };
+    }
 
-    // Save button - POST compiled SVG to server
-    panel.querySelector('#editor-save').onclick = async () => {
-        const svgContent = compileSVG(state);
+    async save() {
+        const svgContent = compileSVG(this.state);
         try {
             const res = await fetch('/save-logo', {
                 method: 'POST',
@@ -597,28 +586,20 @@ export function initEditor() {
                 body: svgContent
             });
             const data = await res.json();
-            showToast(data.success ? 'Saved!' : (data.error || 'Failed'), !data.success);
+            this.showToast(data.success ? 'Saved!' : (data.error || 'Failed'), !data.success);
         } catch {
-            showToast('Server unavailable', true);
+            this.showToast('Server unavailable', true);
         }
-    };
+    }
 
-    // Copy button
-    panel.querySelector('#editor-copy').onclick = async () => {
+    async copy() {
         try {
-            await navigator.clipboard.writeText(compileSVG(state));
-            showToast('Copied!');
+            await navigator.clipboard.writeText(compileSVG(this.state));
+            this.showToast('Copied!');
         } catch {
-            showToast('Copy failed', true);
+            this.showToast('Copy failed', true);
         }
-    };
-
-    console.log('[card-hand-logo-editor] Initialized');
+    }
 }
 
-// Auto-init when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initEditor);
-} else {
-    initEditor();
-}
+customElements.define('logo-editor', LogoEditor);

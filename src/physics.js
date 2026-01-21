@@ -11,6 +11,7 @@ import {
 } from './constants.js';
 import { getState } from './store.js';
 import { getCardSize } from './drawing.js';
+import { Engine, Bodies, Composite, Body } from 'matter-js';
 
 function getThrowForce() {
     const screenWidth = window.innerWidth;
@@ -21,8 +22,6 @@ function getThrowForce() {
     const t = (screenWidth - MOBILE_BREAKPOINT) / (DESKTOP_BREAKPOINT - MOBILE_BREAKPOINT);
     return MOBILE_THROW_FORCE + t * (DESKTOP_THROW_FORCE - MOBILE_THROW_FORCE);
 }
-
-const { Engine, Bodies, Composite, Body } = Matter;
 
 export function initEngine() {
     const eng = Engine.create();

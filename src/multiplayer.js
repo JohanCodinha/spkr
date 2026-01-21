@@ -1,7 +1,7 @@
 // Multiplayer module using Trystero for P2P communication
 // Uses BitTorrent strategy for serverless peer discovery
 
-import { joinRoom as trysteroJoinRoom, selfId } from 'https://esm.sh/trystero/torrent';
+import { joinRoom as trysteroJoinRoom, selfId } from 'trystero/torrent';
 
 // =============================================================================
 // CONSTANTS

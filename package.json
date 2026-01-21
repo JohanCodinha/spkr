@@ -10,6 +10,7 @@
     "test": "npm run test:unit && npm run build:debug && npm run test:e2e",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:e2e": "npx playwright test",
+    "test:e2e:docker": "docker run --rm -v \"$(pwd)\":/work -w /work mcr.microsoft.com/playwright:v1.57.0-jammy bash -c 'npm ci && npm run build:debug && npx playwright test'",
     "test:e2e:update-snapshots": "docker run --rm -v \"$(pwd)\":/work -w /work mcr.microsoft.com/playwright:v1.57.0-jammy bash -c 'npm ci && npm run build:debug && npx playwright test --update-snapshots'",
     "test:headed": "npm run build:debug && npx playwright test --headed",
     "test:report": "npx playwright show-report"
@@ -19,10 +20,13 @@
     "@playwright/test": "latest",
     "esbuild": "^0.24.0",
     "jest": "^30.2.0",
-    "playwright": "latest"
+    "playwright": "latest",
+    "svgo": "^4.0.0",
+    "svgpath": "^2.6.0"
   },
   "dependencies": {
-    "cheerio": "^1.1.2",
+    "matter-js": "^0.19.0",
+    "trystero": "^0.21.0",
     "zustand": "^5.0.10"
   }
 }

@@ -171,6 +171,15 @@
                 Reveal Cards
             </button>
 
+            <!-- Reveal Confirmation (morphs from reveal button) -->
+            <div id="reveal-confirm" class="hidden reveal-confirm" role="alertdialog" aria-label="Confirm reveal">
+                <span id="reveal-confirm-message" class="reveal-confirm-message"></span>
+                <div class="reveal-confirm-actions">
+                    <button id="reveal-confirm-yes" class="reveal-confirm-btn confirm-yes">Reveal</button>
+                    <button id="reveal-confirm-no" class="reveal-confirm-btn confirm-no">Cancel</button>
+                </div>
+            </div>
+
             <nav id="card-deck" class="glass-panel card-deck" role="toolbar" aria-label="Voting cards">
                 <!-- Deck items injected via JS -->
             </nav>

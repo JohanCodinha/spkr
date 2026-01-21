@@ -157,7 +157,11 @@ function setupEventListeners() {
     });
 
     // Reveal button
-    elements.revealBtn.addEventListener('click', revealCards);
+    elements.revealBtn.addEventListener('click', handleRevealClick);
+
+    // Reveal confirmation buttons
+    elements.revealConfirmYes.addEventListener('click', confirmReveal);
+    elements.revealConfirmNo.addEventListener('click', cancelReveal);
 
     // Config sliders
     document.querySelectorAll('[data-config]').forEach(slider => {
@@ -502,15 +506,49 @@ function updateDeckSelection(selectedVal) {
 }
 
 function checkState() {
-    const { areAllVotesIn, canObserverReveal, elements, getVotedCount } = getState();
+    const { areAllVotesIn, cards, elements, getVotedCount } = getState();
 
-    if (areAllVotesIn() || canObserverReveal()) {
+    // Show reveal button when there's at least one card on the table
+    if (cards.length > 0) {
         elements.revealBtn.classList.remove('hidden');
         elements.revealBtn.classList.add('scale-in');
         if (areAllVotesIn()) {
             emit('allVotesIn', { count: getVotedCount() });
         }
     }
+}
+
+function handleRevealClick() {
+    const { areAllVotesIn, getVoters, getVotedCount, elements } = getState();
+
+    // If all votes are in, reveal immediately
+    if (areAllVotesIn()) {
+        revealCards();
+        return;
+    }
+
+    // Otherwise, show confirmation
+    const voters = getVoters();
+    const votedCount = getVotedCount();
+    const pendingCount = voters.length - votedCount;
+    const playerWord = pendingCount === 1 ? 'player' : 'players';
+
+    elements.revealConfirmMessage.textContent = `${pendingCount} ${playerWord} still voting`;
+    elements.revealBtn.classList.add('hidden');
+    elements.revealConfirm.classList.remove('hidden');
+}
+
+function confirmReveal() {
+    const { elements } = getState();
+    elements.revealConfirm.classList.add('hidden');
+    revealCards();
+}
+
+function cancelReveal() {
+    const { elements } = getState();
+    elements.revealConfirm.classList.add('hidden');
+    elements.revealBtn.classList.remove('hidden');
+    elements.revealBtn.classList.add('scale-in');
 }
 
 function revealCards() {
@@ -568,6 +606,9 @@ function resetGameState() {
 
     if (elements.revealBtn) {
         elements.revealBtn.classList.add('hidden');
+    }
+    if (elements.revealConfirm) {
+        elements.revealConfirm.classList.add('hidden');
     }
     if (elements.deck) {
         elements.deck.classList.remove('voted', 'revealed');
@@ -767,6 +808,17 @@ if (__DEBUG__) {
                 cards: state.cards.length,
                 isRevealed: state.isRevealed,
                 revealComplete: state.revealComplete
+            };
+        },
+        // Get voter state for debugging
+        getVoterState() {
+            const { getVoters, areAllVotesIn, getVotedCount, players, localPlayer } = getState();
+            return {
+                localPlayer: { id: localPlayer.id, name: localPlayer.name, voted: localPlayer.voted, isObserver: localPlayer.isObserver },
+                remotePlayers: Object.values(players).map(p => ({ id: p.id, name: p.name, voted: p.voted, isObserver: p.isObserver })),
+                voters: getVoters().map(p => ({ name: p.name, voted: p.voted })),
+                votedCount: getVotedCount(),
+                areAllVotesIn: areAllVotesIn()
             };
         },
         // Pure rendering functions for testing

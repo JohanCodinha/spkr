@@ -334,4 +334,246 @@ test.describe('Multiplayer Scrum Poker', () => {
       await Promise.all(contexts.map(ctx => ctx.close()));
     }
   });
+
+  test('reveal confirmation appears when not all players have voted', async ({ browser }) => {
+    // Create 2 browser contexts (2 players)
+    const contexts = await Promise.all([
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+    ]);
+
+    const [page1, page2] = await Promise.all(contexts.map(ctx => ctx.newPage()));
+
+    try {
+      // Load lobby
+      await Promise.all([page1, page2].map(p => p.goto(URL)));
+      await Promise.all([page1, page2].map(p => setupHooks(p)));
+
+      // Player 1 creates room
+      await page1.fill('#lobby-name-input', 'Revealer');
+      await page1.click('#create-room-btn');
+      await page1.waitForFunction(
+        () => window.__SPKR_STATE__?.roomCreated === true,
+        { timeout: 15000 }
+      );
+
+      const roomCode = await page1.evaluate(() => window.__SPKR_STATE__.roomCode);
+
+      // Player 2 joins
+      await page2.fill('#lobby-name-input', 'Pending');
+      await page2.fill('#room-code-input', roomCode);
+      await page2.click('#join-room-btn');
+      await expect(page2.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+      // Wait for P2P mesh AND for Player 2 to appear in Player 1's state
+      await page1.waitForFunction(
+        () => {
+          const state = window.__SPKR_MOCK__?.getVoterState?.();
+          return state && state.remotePlayers.length >= 1;
+        },
+        { timeout: 15000 }
+      );
+
+      // =====================================================================
+      // TEST 1: Only Player 1 votes, confirmation should appear
+      // =====================================================================
+      await test.step('reveal button appears after first vote', async () => {
+        // Player 1 votes "5"
+        await page1.click('.deck-card:has-text("5")');
+        await page1.waitForTimeout(500);
+
+        // Reveal button should be visible (since there's at least one card)
+        await expect(page1.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
+
+        // Confirmation should NOT be visible yet
+        await expect(page1.locator('#reveal-confirm')).toBeHidden();
+      });
+
+      // =====================================================================
+      // TEST 2: Clicking reveal shows confirmation with pending count
+      // =====================================================================
+      await test.step('clicking reveal shows confirmation dialog', async () => {
+        await page1.click('#reveal-btn');
+
+        // Confirmation should appear
+        await expect(page1.locator('#reveal-confirm')).toBeVisible();
+
+        // Reveal button should be hidden
+        await expect(page1.locator('#reveal-btn')).toBeHidden();
+
+        // Message should show "1 player still voting"
+        const message = await page1.locator('#reveal-confirm-message').textContent();
+        expect(message).toBe('1 player still voting');
+      });
+
+      // =====================================================================
+      // TEST 3: Cancel returns to reveal button
+      // =====================================================================
+      await test.step('cancel hides confirmation and shows reveal button', async () => {
+        await page1.click('#reveal-confirm-no');
+
+        // Confirmation should be hidden
+        await expect(page1.locator('#reveal-confirm')).toBeHidden();
+
+        // Reveal button should be visible again
+        await expect(page1.locator('#reveal-btn')).toBeVisible();
+      });
+
+      // =====================================================================
+      // TEST 4: Confirm proceeds with reveal
+      // =====================================================================
+      await test.step('confirm proceeds with reveal', async () => {
+        // Click reveal again to show confirmation
+        await page1.click('#reveal-btn');
+        await expect(page1.locator('#reveal-confirm')).toBeVisible();
+
+        // Click confirm
+        await page1.click('#reveal-confirm-yes');
+
+        // Wait for reveal to complete
+        await waitForRevealComplete(page1);
+
+        // Confirmation should be hidden
+        await expect(page1.locator('#reveal-confirm')).toBeHidden();
+
+        // Verify cards are revealed
+        const state = await page1.evaluate(() => window.__SPKR_MOCK__?.getMockState?.());
+        expect(state.isRevealed).toBe(true);
+      });
+
+    } finally {
+      await Promise.all(contexts.map(ctx => ctx.close()));
+    }
+  });
+
+  test('reveal skips confirmation when all players have voted', async ({ browser }) => {
+    // Create 2 browser contexts (2 players)
+    const contexts = await Promise.all([
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+    ]);
+
+    const [page1, page2] = await Promise.all(contexts.map(ctx => ctx.newPage()));
+
+    try {
+      // Load lobby
+      await Promise.all([page1, page2].map(p => p.goto(URL)));
+      await Promise.all([page1, page2].map(p => setupHooks(p)));
+
+      // Player 1 creates room
+      await page1.fill('#lobby-name-input', 'Player1');
+      await page1.click('#create-room-btn');
+      await page1.waitForFunction(
+        () => window.__SPKR_STATE__?.roomCreated === true,
+        { timeout: 15000 }
+      );
+
+      const roomCode = await page1.evaluate(() => window.__SPKR_STATE__.roomCode);
+
+      // Player 2 joins
+      await page2.fill('#lobby-name-input', 'Player2');
+      await page2.fill('#room-code-input', roomCode);
+      await page2.click('#join-room-btn');
+      await expect(page2.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+      // Wait for P2P mesh AND for Player 2 to appear in Player 1's state
+      await page1.waitForFunction(
+        () => {
+          const state = window.__SPKR_MOCK__?.getVoterState?.();
+          return state && state.remotePlayers.length >= 1;
+        },
+        { timeout: 15000 }
+      );
+
+      // Both players vote
+      await page1.click('.deck-card:has-text("5")');
+      await page1.waitForTimeout(500);
+      await page2.click('.deck-card:has-text("8")');
+      await page2.waitForTimeout(500);
+
+      // Wait for cards to settle
+      await waitForCardsSettled(page1);
+
+      // Click reveal - should NOT show confirmation since all voted
+      await expect(page1.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
+      await page1.click('#reveal-btn');
+
+      // Confirmation should NOT appear
+      await expect(page1.locator('#reveal-confirm')).toBeHidden();
+
+      // Should go straight to reveal
+      await waitForRevealComplete(page1);
+
+      const state = await page1.evaluate(() => window.__SPKR_MOCK__?.getMockState?.());
+      expect(state.isRevealed).toBe(true);
+      expect(state.cards).toBe(2);
+
+    } finally {
+      await Promise.all(contexts.map(ctx => ctx.close()));
+    }
+  });
+
+  test('reveal confirmation shows correct plural for multiple pending players', async ({ browser }) => {
+    // Create 3 browser contexts (3 players)
+    const contexts = await Promise.all([
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+      browser.newContext({ viewport: { width: 1280, height: 720 } }),
+    ]);
+
+    const [page1, page2, page3] = await Promise.all(contexts.map(ctx => ctx.newPage()));
+
+    try {
+      // Load lobby
+      await Promise.all([page1, page2, page3].map(p => p.goto(URL)));
+      await Promise.all([page1, page2, page3].map(p => setupHooks(p)));
+
+      // Player 1 creates room
+      await page1.fill('#lobby-name-input', 'Voter');
+      await page1.click('#create-room-btn');
+      await page1.waitForFunction(
+        () => window.__SPKR_STATE__?.roomCreated === true,
+        { timeout: 15000 }
+      );
+
+      const roomCode = await page1.evaluate(() => window.__SPKR_STATE__.roomCode);
+
+      // Player 2 joins
+      await page2.fill('#lobby-name-input', 'Pending1');
+      await page2.fill('#room-code-input', roomCode);
+      await page2.click('#join-room-btn');
+      await expect(page2.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+      // Player 3 joins
+      await page3.fill('#lobby-name-input', 'Pending2');
+      await page3.fill('#room-code-input', roomCode);
+      await page3.click('#join-room-btn');
+      await expect(page3.locator('#game-canvas')).toBeVisible({ timeout: 15000 });
+
+      // Wait for P2P mesh AND for both players to appear in Player 1's state
+      await page1.waitForFunction(
+        () => {
+          const state = window.__SPKR_MOCK__?.getVoterState?.();
+          return state && state.remotePlayers.length >= 2;
+        },
+        { timeout: 15000 }
+      );
+
+      // Only Player 1 votes
+      await page1.click('.deck-card:has-text("5")');
+      await page1.waitForTimeout(500);
+
+      // Click reveal
+      await expect(page1.locator('#reveal-btn')).toBeVisible({ timeout: 5000 });
+      await page1.click('#reveal-btn');
+
+      // Confirmation should show "2 players still voting" (plural)
+      await expect(page1.locator('#reveal-confirm')).toBeVisible();
+      const message = await page1.locator('#reveal-confirm-message').textContent();
+      expect(message).toBe('2 players still voting');
+
+    } finally {
+      await Promise.all(contexts.map(ctx => ctx.close()));
+    }
+  });
 });

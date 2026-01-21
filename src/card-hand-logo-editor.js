@@ -125,9 +125,14 @@ function compileSVG(state) {
             `<svg x="${-cardWidth / 2}" y="${-cardHeight}" width="${cardWidth}" height="${cardHeight}"`
         );
 
+        // Hitbox matches the card exactly for precise hover detection
+        const hitboxX = -cardWidth / 2;
+        const hitboxY = -cardHeight;
+
         return `
   <!-- Card ${i}: ${CARD_NAMES[card.svgIndex]} -->
   <g class="card-container" transform="${transform}">
+    <rect class="card-hitbox" x="${hitboxX.toFixed(0)}" y="${hitboxY.toFixed(0)}" width="${cardWidth.toFixed(0)}" height="${cardHeight.toFixed(0)}" fill="transparent"/>
     <g class="card" filter="url(#card-shadow-${i})">
       ${cardSVG}
     </g>

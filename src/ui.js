@@ -175,11 +175,18 @@ function createAvatarElement(p, isNew) {
 }
 
 export function renderHeader() {
-    const { elements, getAllPlayers } = getState();
+    const { elements, players } = getState();
     if (!elements.avatarContainer) return;
 
-    const allPlayers = getAllPlayers();
-    const currentPlayerIds = new Set(allPlayers.map(p => p.id));
+    // Only render other players (not local player)
+    const otherPlayers = Object.values(players);
+    const currentPlayerIds = new Set(otherPlayers.map(p => p.id));
+
+    // Hide wrapper if no other players
+    const wrapper = elements.avatarContainer.parentElement;
+    if (wrapper) {
+        wrapper.classList.toggle('hidden', otherPlayers.length === 0);
+    }
     const existingElements = new Map();
 
     // Collect existing elements
@@ -198,7 +205,7 @@ export function renderHeader() {
     });
 
     // Add or update players
-    allPlayers.forEach(p => {
+    otherPlayers.forEach(p => {
         const existingEl = existingElements.get(p.id);
 
         if (existingEl && !existingEl.classList.contains('exiting')) {

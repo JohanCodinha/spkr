@@ -116,12 +116,18 @@ hr {
     pointer-events: auto;
 }
 
-.header > :last-child {
+.header .room-info {
+    grid-column: 1;
+}
+
+.header .identity-controls {
+    grid-column: 3;
     justify-self: end;
 }
 
 /* Avatar Container - Centered in grid */
 .avatar-wrapper {
+    grid-column: 2;
     justify-self: center;
     padding: 0.5rem;
     border-radius: 9999px;

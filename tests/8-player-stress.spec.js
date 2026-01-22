@@ -7,6 +7,9 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'child_process';
 
+// Skip in CI - requires local wrangler dev with Durable Objects
+const isCI = !!process.env.CI;
+
 const ROOT = join(import.meta.dirname, '..');
 const PUBLIC = join(ROOT, 'public');
 
@@ -289,6 +292,9 @@ function printStatus(message) {
 }
 
 test.describe('8-Player Stress Test', () => {
+  // Skip in CI - requires local wrangler dev with Durable Objects
+  test.skip(() => isCI, 'Skipped in CI - requires local wrangler dev');
+
   test.setTimeout(300000); // 5 minutes for full test (8-peer WebRTC mesh takes time)
 
   test.beforeAll(async () => {

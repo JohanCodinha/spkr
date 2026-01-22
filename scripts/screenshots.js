@@ -200,8 +200,8 @@ async function main() {
         });
         console.log('✅ MP4 created: game-demo.mp4');
 
-        // Create optimized GIF (600px, 15fps, 256 colors with diff palette)
-        execSync(`ffmpeg -y -i "${videoPath}" -vf "fps=15,scale=600:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=floyd_steinberg" -loop 0 "${gifPath}"`, {
+        // Create optimized GIF (600px, 24fps, 256 colors with diff palette)
+        execSync(`ffmpeg -y -i "${videoPath}" -vf "fps=24,scale=600:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=floyd_steinberg" -loop 0 "${gifPath}"`, {
           stdio: 'pipe',
         });
         console.log('✅ GIF created: game-demo.gif');

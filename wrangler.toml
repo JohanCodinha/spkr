@@ -4,7 +4,7 @@ compatibility_date = "2024-12-01"
 workers_dev = false
 routes = [{ pattern = "eval.work", custom_domain = true }]
 
-# Durable Objects for WebSocket signaling (requires paid plan)
+# Durable Objects for WebSocket signaling
 [durable_objects]
 bindings = [
   { name = "SIGNAL_ROOM", class_name = "SignalRoom" }
@@ -12,10 +12,15 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["SignalRoom"]
+new_sqlite_classes = ["SignalRoom"]
 
 [assets]
 directory = "public"
 
 [env.beta]
 routes = [{ pattern = "beta.eval.work", custom_domain = true }]
+
+[env.beta.durable_objects]
+bindings = [
+  { name = "SIGNAL_ROOM", class_name = "SignalRoom" }
+]

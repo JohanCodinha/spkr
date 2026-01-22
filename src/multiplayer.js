@@ -1,7 +1,7 @@
 // Multiplayer module using Trystero for P2P communication
-// Uses BitTorrent strategy for serverless peer discovery
+// Uses hybrid strategy: Cloudflare Worker (fast) + BitTorrent (fallback)
 
-import { joinRoom as trysteroJoinRoom, selfId } from 'trystero/torrent';
+import { joinRoom as trysteroJoinRoom, selfId } from './hybrid-strategy.js';
 
 // =============================================================================
 // CONSTANTS

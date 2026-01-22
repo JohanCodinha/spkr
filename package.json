@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "node dev-server.js",
+    "dev:worker": "npx wrangler dev --port 8787",
+    "dev:full": "npx wrangler dev --port 8787 & node dev-server.js",
     "build": "node build.js",
     "build:debug": "DEBUG=true node build.js",
     "screenshots": "node scripts/screenshots.js",

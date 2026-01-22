@@ -97,17 +97,25 @@ The build outputs a self-contained `public/index.html` with all JavaScript, CSS,
 
 ## Releasing
 
-```bash
-# With release notes (opens editor for markdown)
-git tag -a v1.2.3
-git push --tags
+Push a tag and the CI workflow handles everything:
 
-# Or quick release (auto-generates notes from commits)
+```bash
+# With release notes (recommended)
+git tag -a v1.2.3 -m "Brief description of changes"
+git push origin v1.2.3
+
+# Or lightweight tag (auto-generates notes from commits)
 git tag v1.2.3
-git push --tags
+git push origin v1.2.3
 ```
 
-The release workflow will run tests, generate screenshots, create a GitHub Release, and deploy to eval.work.
+The release workflow will:
+1. Run all tests (unit + E2E)
+2. Generate screenshots and demo GIF
+3. Create a GitHub Release with all assets attached
+4. Deploy to eval.work
+
+**Important:** Never create releases manually via GitHub UI or `gh release create`. The workflow is the only way to ensure releases have proper screenshots and assets. If you accidentally create a manual release, the workflow will overwrite it once tests pass.
 
 ## License
 

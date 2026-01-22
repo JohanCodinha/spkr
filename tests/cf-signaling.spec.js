@@ -1,14 +1,14 @@
 // Test: Cloudflare Worker signaling
 // Tests that CF signaling connects peers faster than BitTorrent fallback
 
-import { test as baseTest, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { createServer } from 'http';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'child_process';
 
 // Skip in CI - wrangler dev requires Cloudflare auth for Durable Objects
-const test = process.env.CI ? baseTest.skip : baseTest;
+const isCI = !!process.env.CI;
 
 const ROOT = join(import.meta.dirname, '..');
 const PUBLIC = join(ROOT, 'public');
@@ -114,6 +114,9 @@ async function setupHooks(page) {
 }
 
 test.describe('CF Signaling', () => {
+  // Skip in CI - wrangler dev requires Cloudflare auth for Durable Objects
+  test.skip(() => isCI, 'Skipped in CI - requires local wrangler dev');
+
   test.beforeAll(async () => {
     // Start wrangler dev
     console.log('Starting wrangler dev...');

@@ -72,10 +72,11 @@ Players connect directly to each other using **peer-to-peer WebRTC connections**
 
 ## Tech Stack
 
-Built with vanilla JavaScript and two excellent libraries:
+Built with vanilla JavaScript and a few excellent libraries:
 
 - **[Trystero](https://github.com/dmotz/trystero)** — Serverless WebRTC matchmaking using BitTorrent DHT
 - **[Matter.js](https://brm.io/matter-js/)** — 2D physics engine for satisfying card interactions
+- **[Zustand](https://github.com/pmndrs/zustand)** — Lightweight state management
 
 ## Development
 

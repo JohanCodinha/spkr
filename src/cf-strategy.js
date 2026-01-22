@@ -44,7 +44,16 @@ export function joinRoom(config, roomCode, options = {}) {
     connectionAttempts++;
     ws = new WebSocket(`${CF_SIGNAL_URL}/${roomCode}`);
 
+    // Fast-fail timeout - if no connection in 3 seconds, try next attempt
+    const connectTimeout = setTimeout(() => {
+      if (ws && ws.readyState === WebSocket.CONNECTING) {
+        console.log('[CF] Connection timeout, closing...');
+        ws.close();
+      }
+    }, 3000);
+
     ws.onopen = () => {
+      clearTimeout(connectTimeout);
       console.log('[CF] Connected to signaling server');
       hasConnected = true;
       connectionAttempts = 0;
@@ -56,6 +65,7 @@ export function joinRoom(config, roomCode, options = {}) {
     ws.onmessage = e => handleMessage(JSON.parse(e.data));
 
     ws.onclose = () => {
+      clearTimeout(connectTimeout);
       clearInterval(announceTimer);
       if (!closed) {
         if (!hasConnected && connectionAttempts >= MAX_ATTEMPTS) {
